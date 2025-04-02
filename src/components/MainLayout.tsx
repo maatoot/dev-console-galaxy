@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Outlet, NavLink, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +7,7 @@ import {
   Home,
   Package,
   Key,
-  Lab,
+  FlaskConical,
   Settings,
   Menu,
   LogOut,
@@ -24,7 +23,6 @@ const MainLayout = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
 
-  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
@@ -33,7 +31,7 @@ const MainLayout = () => {
     { label: 'Dashboard', icon: <Home size={20} />, path: '/dashboard' },
     { label: 'API Hub', icon: <Package size={20} />, path: '/apis' },
     { label: 'Subscriptions', icon: <Key size={20} />, path: '/subscriptions' },
-    { label: 'API Tester', icon: <Lab size={20} />, path: '/tester' },
+    { label: 'API Tester', icon: <FlaskConical size={20} />, path: '/tester' },
     { label: 'Settings', icon: <Settings size={20} />, path: '/settings' },
   ];
 
@@ -44,14 +42,12 @@ const MainLayout = () => {
 
   return (
     <div className="flex h-screen bg-background">
-      {/* Sidebar */}
       <motion.div
         className="h-screen bg-api-dark border-r border-border flex flex-col"
         initial={false}
         animate={isCollapsed ? 'collapsed' : 'expanded'}
         variants={sidebarVariants}
       >
-        {/* Sidebar Header */}
         <div className={cn(
           "h-16 flex items-center px-4 border-b border-border",
           isCollapsed ? "justify-center" : "justify-between"
@@ -69,7 +65,6 @@ const MainLayout = () => {
           </Button>
         </div>
 
-        {/* Sidebar Navigation */}
         <div className="flex-1 py-4 flex flex-col gap-1 overflow-y-auto">
           <TooltipProvider delayDuration={0}>
             {navItems.map((item) => (
@@ -97,7 +92,6 @@ const MainLayout = () => {
           </TooltipProvider>
         </div>
 
-        {/* Sidebar Footer */}
         <div className={cn(
           "h-16 border-t border-border flex items-center",
           isCollapsed ? "justify-center px-2" : "px-4 justify-between"
@@ -131,9 +125,7 @@ const MainLayout = () => {
         </div>
       </motion.div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
         <header className="h-16 border-b border-border flex items-center justify-between px-6">
           <div className="text-xl font-medium">
             {navItems.find(item => item.path === location.pathname)?.label || 'Dashboard'}
@@ -145,7 +137,6 @@ const MainLayout = () => {
           </div>
         </header>
 
-        {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           <AnimatePresence mode="wait">
             <motion.div

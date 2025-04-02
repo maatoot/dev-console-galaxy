@@ -1,7 +1,6 @@
-
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

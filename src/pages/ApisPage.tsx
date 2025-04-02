@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Package, Search, PlusCircle, Tag, Copy } from 'lucide-react';
 import apiService from '@/services/apiClient';
 import { useAuth } from '@/contexts/AuthContext';
-import { toast } from '@/components/ui/sonner';
+import { toast } from '@/lib/toast';
 
 interface API {
   id: string;
@@ -32,7 +31,6 @@ const ApisPage = () => {
   const [subscribeDialogOpen, setSubscribeDialogOpen] = useState(false);
   const [selectedApi, setSelectedApi] = useState<API | null>(null);
   
-  // Form states
   const [newApiForm, setNewApiForm] = useState({
     name: '',
     description: '',
@@ -78,7 +76,6 @@ const ApisPage = () => {
         description: 'API created successfully.',
       });
       
-      // Reset form
       setNewApiForm({
         name: '',
         description: '',
@@ -89,7 +86,6 @@ const ApisPage = () => {
       
       setCreateDialogOpen(false);
       
-      // Refresh APIs
       fetchApis();
     } catch (error) {
       console.error('Error creating API:', error);

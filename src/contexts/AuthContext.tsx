@@ -1,7 +1,7 @@
 
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
-import { toast } from '@/components/ui/sonner';
+import { toast } from '@/lib/toast';
 
 interface User {
   username: string;

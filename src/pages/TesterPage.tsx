@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Send, Clock, Check, AlertTriangle, Copy } from 'lucide-react';
 import apiService from '@/services/apiClient';
-import { toast } from '@/components/ui/sonner';
+import { toast } from '@/lib/toast';
 
 const TesterPage = () => {
   const [searchParams] = useSearchParams();
@@ -27,7 +26,6 @@ const TesterPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initialize with some default values if api key is provided
     if (initialApiKey) {
       setPath('test');
     }
@@ -105,8 +103,6 @@ const TesterPage = () => {
       console.error('API request error:', error);
       
       if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
         setResponse({
           status: error.response.status,
           statusText: error.response.statusText,
@@ -114,10 +110,8 @@ const TesterPage = () => {
           headers: error.response.headers
         });
       } else if (error.request) {
-        // The request was made but no response was received
         setError('No response received from server. Check the API endpoint and your network connection.');
       } else {
-        // Something happened in setting up the request that triggered an Error
         setError(`Error: ${error.message}`);
       }
     } finally {
@@ -150,7 +144,6 @@ const TesterPage = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Request Panel */}
         <Card>
           <CardHeader>
             <CardTitle>Request</CardTitle>
@@ -235,7 +228,6 @@ const TesterPage = () => {
           </CardFooter>
         </Card>
 
-        {/* Response Panel */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

@@ -1,5 +1,6 @@
-
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import { toast } from '@/lib/toast';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'react-router-dom';
 import { Copy, ExternalLink, Key, Package, RefreshCw } from 'lucide-react';
 import apiService from '@/services/apiClient';
-import { toast } from '@/components/ui/sonner';
 
 interface API {
   id: string;
