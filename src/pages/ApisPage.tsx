@@ -8,19 +8,26 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, Search, PlusCircle, Tag, Copy, AlertCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Package, Search, PlusCircle, Tag, Copy, AlertCircle, Plus, Edit } from 'lucide-react';
 import apiService from '@/services/apiClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 import { useNavigate } from 'react-router-dom';
+
+// New interfaces for improved type safety
+interface Endpoint {
+  path: string;
+  description: string;
+}
 
 interface API {
   id: string;
   name: string;
   description: string;
   baseUrl: string;
-  endpoint: string;
-  version: string;
+  endpoints: Endpoint[];
+  version?: string;
   visibility: 'public' | 'private';
   provider_id: string;
   authentication?: {
@@ -28,7 +35,8 @@ interface API {
     apiKeyName?: string;
     apiKeyLocation?: 'header' | 'query';
   };
-  defaultHeaders?: Record<string, string>;
+  defaultHeaders?: Record<string, string> | string;
+  logo?: string;
 }
 
 const ApisPage = () => {
@@ -38,16 +46,16 @@ const ApisPage = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [endpointDialogOpen, setEndpointDialogOpen] = useState(false);
   const [subscribeDialogOpen, setSubscribeDialogOpen] = useState(false);
   const [selectedApi, setSelectedApi] = useState<API | null>(null);
   const [authType, setAuthType] = useState<'none' | 'basic' | 'bearer' | 'apiKey'>('none');
+  const [useJsonHeaders, setUseJsonHeaders] = useState(false);
   
   const [newApiForm, setNewApiForm] = useState({
     name: '',
     description: '',
     baseUrl: '',
-    endpoint: '',
-    version: '1.0.0',
     visibility: 'public',
     authentication: {
       type: 'none',
@@ -57,10 +65,19 @@ const ApisPage = () => {
     defaultHeaders: '{}'
   });
   
+  // New form for endpoints
+  const [newEndpointForm, setNewEndpointForm] = useState({
+    path: '',
+    description: ''
+  });
+  
   const [subscriptionForm, setSubscriptionForm] = useState({
     plan: 'free'
   });
 
+  // New state for file upload
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  
   useEffect(() => {
     fetchApis();
   }, []);
@@ -92,13 +109,18 @@ const ApisPage = () => {
     try {
       let defaultHeadersObj = {};
       
-      try {
-        defaultHeadersObj = JSON.parse(newApiForm.defaultHeaders);
-      } catch (err) {
-        toast('Warning', {
-          description: 'Invalid JSON in default headers. Using empty headers.',
-          variant: 'destructive'
-        });
+      if (useJsonHeaders) {
+        try {
+          defaultHeadersObj = JSON.parse(newApiForm.defaultHeaders);
+        } catch (err) {
+          toast('Warning', {
+            description: 'Invalid JSON in default headers. Using empty headers.',
+            variant: 'destructive'
+          });
+        }
+      } else {
+        // Parsing will be handled by the backend
+        defaultHeadersObj = newApiForm.defaultHeaders;
       }
       
       const apiData = {
@@ -107,20 +129,20 @@ const ApisPage = () => {
         authentication: {
           ...newApiForm.authentication,
           type: authType
-        }
+        },
+        logo: logoFile ? URL.createObjectURL(logoFile) : undefined
       };
       
-      await apiService.apis.create(apiData);
+      const result = await apiService.apis.create(apiData);
       toast('Success', {
         description: 'API created successfully.',
       });
       
+      // Reset form
       setNewApiForm({
         name: '',
         description: '',
         baseUrl: '',
-        endpoint: '',
-        version: '1.0.0',
         visibility: 'public',
         authentication: {
           type: 'none',
@@ -129,14 +151,48 @@ const ApisPage = () => {
         },
         defaultHeaders: '{}'
       });
-      
+      setLogoFile(null);
       setCreateDialogOpen(false);
       
+      // Refresh API list
       fetchApis();
+      
+      // Select the newly created API for endpoint addition
+      setSelectedApi(result.data);
+      setEndpointDialogOpen(true);
     } catch (error) {
       console.error('Error creating API:', error);
       toast('Error', {
         description: 'Failed to create API. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleAddEndpoint = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedApi) return;
+    
+    try {
+      await apiService.apis.addEndpoint(selectedApi.id, newEndpointForm);
+      
+      toast('Success', {
+        description: 'Endpoint added successfully.',
+      });
+      
+      setEndpointDialogOpen(false);
+      setNewEndpointForm({
+        path: '',
+        description: ''
+      });
+      
+      // Refresh API list
+      fetchApis();
+    } catch (error) {
+      console.error('Error adding endpoint:', error);
+      toast('Error', {
+        description: 'Failed to add endpoint. Please try again.',
         variant: 'destructive'
       });
     }
@@ -179,6 +235,12 @@ const ApisPage = () => {
 
   const testApi = (apiKey: string) => {
     navigate(`/tester?apiKey=${apiKey}`);
+  };
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setLogoFile(e.target.files[0]);
+    }
   };
 
   if (loading) {
@@ -243,40 +305,21 @@ const ApisPage = () => {
                       required
                     />
                   </div>
+                  
                   <div className="grid gap-2">
-                    <Label htmlFor="endpoint">Endpoint Path</Label>
-                    <Input
-                      id="endpoint"
-                      value={newApiForm.endpoint}
-                      onChange={(e) => setNewApiForm({...newApiForm, endpoint: e.target.value})}
-                      placeholder="/weather"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="version">Version</Label>
-                      <Input
-                        id="version"
-                        value={newApiForm.version}
-                        onChange={(e) => setNewApiForm({...newApiForm, version: e.target.value})}
-                        placeholder="1.0.0"
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="visibility">Visibility</Label>
-                      <Select 
-                        value={newApiForm.visibility} 
-                        onValueChange={(value) => setNewApiForm({...newApiForm, visibility: value})}
-                      >
-                        <SelectTrigger id="visibility">
-                          <SelectValue placeholder="Select visibility" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="public">Public</SelectItem>
-                          <SelectItem value="private">Private</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Label htmlFor="visibility">Visibility</Label>
+                    <Select 
+                      value={newApiForm.visibility} 
+                      onValueChange={(value) => setNewApiForm({...newApiForm, visibility: value})}
+                    >
+                      <SelectTrigger id="visibility">
+                        <SelectValue placeholder="Select visibility" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="public">Public</SelectItem>
+                        <SelectItem value="private">Private</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   
                   <div className="grid gap-2">
@@ -349,13 +392,67 @@ const ApisPage = () => {
                   )}
                   
                   <div className="grid gap-2">
-                    <Label htmlFor="defaultHeaders">Default Headers (JSON)</Label>
-                    <Textarea
-                      id="defaultHeaders"
-                      value={newApiForm.defaultHeaders}
-                      onChange={(e) => setNewApiForm({...newApiForm, defaultHeaders: e.target.value})}
-                      placeholder='{"Content-Type": "application/json"}'
-                      className="font-mono text-xs"
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="defaultHeaders">Default Headers</Label>
+                      <div className="flex items-center space-x-2">
+                        <Label htmlFor="jsonHeaders" className="text-sm">JSON Format</Label>
+                        <Switch 
+                          id="jsonHeaders" 
+                          checked={useJsonHeaders} 
+                          onCheckedChange={setUseJsonHeaders} 
+                        />
+                      </div>
+                    </div>
+                    
+                    {useJsonHeaders ? (
+                      <Textarea
+                        id="defaultHeaders"
+                        value={newApiForm.defaultHeaders}
+                        onChange={(e) => setNewApiForm({...newApiForm, defaultHeaders: e.target.value})}
+                        placeholder='{"Content-Type": "application/json"}'
+                        className="font-mono text-xs"
+                      />
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            placeholder="Header name"
+                            onChange={(e) => {
+                              // Simple key-value implementation
+                              const headers = JSON.parse(newApiForm.defaultHeaders || '{}');
+                              const tempValue = headers[e.target.value] || '';
+                              delete headers[Object.keys(headers)[0]];
+                              headers[e.target.value] = tempValue;
+                              setNewApiForm({
+                                ...newApiForm,
+                                defaultHeaders: JSON.stringify(headers)
+                              });
+                            }}
+                          />
+                          <Input
+                            placeholder="Value"
+                            onChange={(e) => {
+                              const headers = JSON.parse(newApiForm.defaultHeaders || '{}');
+                              const key = Object.keys(headers)[0] || 'Content-Type';
+                              headers[key] = e.target.value;
+                              setNewApiForm({
+                                ...newApiForm,
+                                defaultHeaders: JSON.stringify(headers)
+                              });
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="logo">API Logo (Optional)</Label>
+                    <Input
+                      id="logo"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
                     />
                   </div>
                 </div>
@@ -408,6 +505,11 @@ const ApisPage = () => {
               {filteredApis.map((api) => (
                 <Card key={api.id}>
                   <CardHeader>
+                    {api.logo && (
+                      <div className="w-12 h-12 mb-2">
+                        <img src={api.logo} alt={`${api.name} logo`} className="w-full h-full object-contain rounded" />
+                      </div>
+                    )}
                     <CardTitle>{api.name}</CardTitle>
                     <CardDescription>{api.description}</CardDescription>
                   </CardHeader>
@@ -417,14 +519,24 @@ const ApisPage = () => {
                         <span className="text-muted-foreground">Base URL:</span>
                         <span className="font-mono text-xs truncate max-w-[180px]">{api.baseUrl}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Endpoint:</span>
-                        <span className="font-mono text-xs truncate max-w-[180px]">{api.endpoint}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Version:</span>
-                        <span>{api.version}</span>
-                      </div>
+                      {api.endpoints && api.endpoints.length > 0 ? (
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground">Endpoints:</span>
+                          <ul className="space-y-1 ml-4">
+                            {api.endpoints.map((endpoint, index) => (
+                              <li key={index} className="font-mono text-xs truncate">
+                                {endpoint.path}
+                                {endpoint.description && <span className="ml-1 text-muted-foreground">- {endpoint.description}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Endpoints:</span>
+                          <span className="text-xs">No endpoints defined</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Visibility:</span>
                         <div className="flex items-center">
@@ -540,6 +652,49 @@ const ApisPage = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog for adding endpoints after API creation */}
+      <Dialog open={endpointDialogOpen} onOpenChange={setEndpointDialogOpen}>
+        <DialogContent>
+          <form onSubmit={handleAddEndpoint}>
+            <DialogHeader>
+              <DialogTitle>Add Endpoint to {selectedApi?.name}</DialogTitle>
+              <DialogDescription>
+                Define the endpoints for your API. You can add more endpoints later.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="endpointPath">Endpoint Path</Label>
+                  <Input
+                    id="endpointPath"
+                    value={newEndpointForm.path}
+                    onChange={(e) => setNewEndpointForm({...newEndpointForm, path: e.target.value})}
+                    placeholder="/weather"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="endpointDescription">Description (Optional)</Label>
+                  <Textarea
+                    id="endpointDescription"
+                    value={newEndpointForm.description}
+                    onChange={(e) => setNewEndpointForm({...newEndpointForm, description: e.target.value})}
+                    placeholder="Get current weather conditions"
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEndpointDialogOpen(false)}>
+                Skip
+              </Button>
+              <Button type="submit">Add Endpoint</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
