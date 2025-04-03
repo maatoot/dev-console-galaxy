@@ -11,7 +11,6 @@ import LoginPage from "@/pages/LoginPage";
 import RegisterPage from "@/pages/RegisterPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ApisPage from "@/pages/ApisPage";
-import ApiDetailsPage from "@/pages/ApiDetailsPage";
 import SubscriptionsPage from "@/pages/SubscriptionsPage";
 import TesterPage from "@/pages/TesterPage";
 import SettingsPage from "@/pages/SettingsPage";
@@ -39,7 +38,6 @@ const App = () => (
             <Route path="/" element={<MainLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/apis" element={<ApisPage />} />
-              <Route path="/apis/:apiId" element={<ApiDetailsPage />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/tester" element={<TesterPage />} />
               <Route path="/settings" element={<SettingsPage />} />

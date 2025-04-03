@@ -49,37 +49,17 @@ const createMockApi = (apiData: any) => {
     id: `api-${Date.now()}`,
     provider_id: localStorage.getItem('userId') || 'mock-provider',
     created_at: new Date().toISOString(),
-    // Initialize with empty endpoints array or with the first endpoint if provided
-    endpoints: apiData.endpoints || (apiData.endpoint ? [{ path: apiData.endpoint, description: '' }] : [])
+    endpoints: apiData.endpoint ? [{ path: apiData.endpoint, description: '' }] : []
   };
   
-  // Remove legacy endpoint field if it exists
-  delete newApi.endpoint;
+  delete newApi.endpoint; // Removed since we're using endpoints array now
   
   mockApis.push(newApi);
   return Promise.resolve({ data: newApi });
 };
 
-const addMockEndpoint = (apiId: string, endpointData: any) => {
-  const api = mockApis.find(api => api.id === apiId);
-  if (api) {
-    if (!api.endpoints) api.endpoints = [];
-    api.endpoints.push(endpointData);
-    return Promise.resolve({ data: api });
-  }
-  return Promise.reject(new Error('API not found'));
-};
-
 const listMockApis = () => {
   return Promise.resolve({ data: mockApis });
-};
-
-const getMockApi = (apiId: string) => {
-  const api = mockApis.find(api => api.id === apiId);
-  if (api) {
-    return Promise.resolve({ data: api });
-  }
-  return Promise.reject(new Error('API not found'));
 };
 
 const createMockSubscription = (subscriptionData: any) => {
@@ -114,21 +94,19 @@ export const apiService = {
     list: () => isLovableEnvironment ? listMockApis() : userServiceClient.get('/apis'),
     create: (apiData: any) => isLovableEnvironment ? createMockApi(apiData) : userServiceClient.post('/apis', apiData),
     get: (apiId: string) => isLovableEnvironment 
-      ? getMockApi(apiId)
+      ? Promise.resolve({ data: mockApis.find(api => api.id === apiId) }) 
       : userServiceClient.get(`/apis/${apiId}`),
     addEndpoint: (apiId: string, endpointData: any) => isLovableEnvironment
-      ? addMockEndpoint(apiId, endpointData)
-      : userServiceClient.post(`/apis/${apiId}/endpoints`, endpointData),
-    updateDetails: (apiId: string, apiData: any) => isLovableEnvironment
       ? Promise.resolve(() => {
-          const apiIndex = mockApis.findIndex(api => api.id === apiId);
-          if (apiIndex !== -1) {
-            mockApis[apiIndex] = { ...mockApis[apiIndex], ...apiData };
-            return { data: mockApis[apiIndex] };
+          const api = mockApis.find(api => api.id === apiId);
+          if (api) {
+            if (!api.endpoints) api.endpoints = [];
+            api.endpoints.push(endpointData);
+            return { data: api };
           }
-          return Promise.reject(new Error('API not found'));
+          return { data: null };
         })
-      : userServiceClient.put(`/apis/${apiId}`, apiData),
+      : userServiceClient.post(`/apis/${apiId}/endpoints`, endpointData),
   },
   
   // Subscriptions endpoints
@@ -137,16 +115,6 @@ export const apiService = {
     create: (subscriptionData: any) => isLovableEnvironment 
       ? createMockSubscription(subscriptionData) 
       : userServiceClient.post('/subscriptions', subscriptionData),
-    get: (subscriptionId: string) => isLovableEnvironment
-      ? Promise.resolve({ data: mockSubscriptions.find(sub => sub.id === subscriptionId) })
-      : userServiceClient.get(`/subscriptions/${subscriptionId}`),
-    getByApiId: (apiId: string) => {
-      if (isLovableEnvironment) {
-        const subscription = mockSubscriptions.find(sub => sub.api_id === apiId);
-        return Promise.resolve({ data: subscription || null });
-      }
-      return userServiceClient.get(`/subscriptions/api/${apiId}`);
-    }
   },
   
   // Gateway endpoints
@@ -173,9 +141,10 @@ if (isLovableEnvironment && mockApis.length === 0) {
       description: 'Real-time weather data from around the world',
       baseUrl: 'https://api.weather.example',
       endpoints: [
-        { path: '/current', description: 'Get current weather conditions' },
-        { path: '/forecast', description: 'Get weather forecast for 5 days' }
+        { path: '/current', description: 'Get current weather' },
+        { path: '/forecast', description: 'Get weather forecast' }
       ],
+      version: '1.0.0',
       visibility: 'public',
       provider_id: 'mock-provider',
       authentication: { type: 'apiKey', apiKeyName: 'X-API-Key', apiKeyLocation: 'header' },
@@ -187,9 +156,9 @@ if (isLovableEnvironment && mockApis.length === 0) {
       description: 'Up-to-date currency exchange rates',
       baseUrl: 'https://api.currency.example',
       endpoints: [
-        { path: '/rates', description: 'Get current exchange rates' },
-        { path: '/convert', description: 'Convert between currencies' }
+        { path: '/rates', description: 'Get current exchange rates' }
       ],
+      version: '2.1.0',
       visibility: 'public',
       provider_id: 'mock-provider-2',
       authentication: { type: 'bearer' },

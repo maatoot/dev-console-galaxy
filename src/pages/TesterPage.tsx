@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -23,10 +24,9 @@ const TesterPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialApiKey = searchParams.get('apiKey') || '';
-  const initialPath = searchParams.get('path') || '';
   
   const [apiKey, setApiKey] = useState(initialApiKey);
-  const [path, setPath] = useState(initialPath);
+  const [path, setPath] = useState('');
   const [method, setMethod] = useState('GET');
   const [headersFormat, setHeadersFormat] = useState<'json' | 'keyValue'>('keyValue');
   const [headers, setHeaders] = useState('{}');
@@ -39,12 +39,14 @@ const TesterPage = () => {
   const [isEmbedded, setIsEmbedded] = useState(false);
 
   useEffect(() => {
+    // Check if the component is embedded in an iframe
     setIsEmbedded(window.self !== window.top);
     
     if (initialApiKey) {
       setPath('test');
     }
 
+    // Check if user is not authenticated and not on embedded view
     if (!isAuthenticated && !window.location.href.includes('?apiKey=') && !isEmbedded) {
       toast('Info', {
         description: 'Please sign in to access all API tester features',
@@ -53,6 +55,7 @@ const TesterPage = () => {
   }, [initialApiKey, isAuthenticated]);
 
   useEffect(() => {
+    // Convert headersList to JSON when format changes to JSON
     if (headersFormat === 'json') {
       const headersObj = headersList.reduce((acc, header) => {
         if (header.key.trim()) {
@@ -114,6 +117,7 @@ const TesterPage = () => {
             parsedHeaders = JSON.parse(headers);
           }
         } else {
+          // Convert key-value to object
           parsedHeaders = headersList.reduce((acc, header) => {
             if (header.key.trim()) {
               acc[header.key] = header.value;
@@ -193,10 +197,7 @@ const TesterPage = () => {
   };
 
   const openInNewWindow = () => {
-    const params = new URLSearchParams();
-    if (apiKey) params.append('apiKey', apiKey);
-    if (path) params.append('path', path);
-    window.open(`/tester?${params.toString()}`, '_blank');
+    window.open(`/tester?apiKey=${apiKey}`, '_blank');
   };
 
   return (
