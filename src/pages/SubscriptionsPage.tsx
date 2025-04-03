@@ -13,7 +13,8 @@ interface API {
   id: string;
   name: string;
   description: string;
-  endpoint: string;
+  baseUrl: string;
+  endpoints: { path: string; description: string }[];
 }
 
 interface Subscription {
@@ -42,7 +43,6 @@ const SubscriptionsPage = () => {
       const subscriptionsData = response.data || [];
       setSubscriptions(subscriptionsData);
 
-      // Fetch API details for each subscription
       const apiIds = [...new Set(subscriptionsData.map(sub => sub.api_id))];
       const apisResponse = await apiService.apis.list();
       const apisData = apisResponse.data || [];
@@ -123,7 +123,11 @@ const SubscriptionsPage = () => {
                   <Card key={subscription.id}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-xl">{api?.name || 'Unknown API'}</CardTitle>
+                        <CardTitle className="text-xl">
+                          <Link to={`/apis/${subscription.api_id}`} className="hover:underline">
+                            {api?.name || 'Unknown API'}
+                          </Link>
+                        </CardTitle>
                         {getStatusBadge(subscription.end_date)}
                       </div>
                       <CardDescription>{api?.description}</CardDescription>
@@ -171,9 +175,9 @@ const SubscriptionsPage = () => {
                             </Link>
                           </Button>
                           <Button asChild variant="outline" size="sm" className="flex-1">
-                            <a href={api?.endpoint} target="_blank" rel="noopener noreferrer">
-                              Docs <ExternalLink className="h-3 w-3 ml-1" />
-                            </a>
+                            <Link to={`/apis/${subscription.api_id}`}>
+                              View Details
+                            </Link>
                           </Button>
                         </div>
                       </div>
@@ -207,7 +211,11 @@ const SubscriptionsPage = () => {
                   <Card key={subscription.id} className="opacity-70">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-xl">{api?.name || 'Unknown API'}</CardTitle>
+                        <CardTitle className="text-xl">
+                          <Link to={`/apis/${subscription.api_id}`} className="hover:underline">
+                            {api?.name || 'Unknown API'}
+                          </Link>
+                        </CardTitle>
                         <Badge variant="destructive">Expired</Badge>
                       </div>
                       <CardDescription>{api?.description}</CardDescription>
@@ -227,7 +235,7 @@ const SubscriptionsPage = () => {
                       </div>
                       
                       <Button asChild className="w-full">
-                        <Link to={`/apis`}>
+                        <Link to={`/apis/${subscription.api_id}`}>
                           Renew Subscription
                         </Link>
                       </Button>
