@@ -20,6 +20,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Mock user database for demo purposes
+const mockUsers: Record<string, { username: string; password: string }> = {};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -41,6 +44,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (username: string, password: string) => {
     try {
       setIsLoading(true);
+      
+      // For demo environment, check against our mock database
+      if (import.meta.env.DEV || window.location.href.includes('lovableproject.com')) {
+        // Check if user exists and password matches
+        if (mockUsers[username] && mockUsers[username].password === password) {
+          // Create a simple token (in a real app, this would be a JWT from the server)
+          const mockToken = `mock-token-${Date.now()}`;
+          const userObj = { username };
+          
+          setToken(mockToken);
+          setUser(userObj);
+          
+          localStorage.setItem('token', mockToken);
+          localStorage.setItem('user', JSON.stringify(userObj));
+          
+          toast('Success', {
+            description: 'You have successfully logged in.',
+          });
+          return;
+        } else {
+          throw new Error('Invalid credentials');
+        }
+      }
+      
+      // This will only run in production with actual backend
       const response = await axios.post('http://localhost:8000/login', {
         username,
         password
@@ -76,6 +104,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (username: string, password: string) => {
     try {
       setIsLoading(true);
+      
+      // For demo environment, store in our mock database
+      if (import.meta.env.DEV || window.location.href.includes('lovableproject.com')) {
+        // Check if username already exists
+        if (mockUsers[username]) {
+          throw new Error('Username already exists');
+        }
+        
+        // Store the new user
+        mockUsers[username] = {
+          username,
+          password
+        };
+        
+        console.log('Registered user in mock database:', username);
+        
+        toast('Success', {
+          description: 'Registration successful. Please log in.',
+        });
+        return;
+      }
+      
+      // This will only run in production with actual backend
       await axios.post('http://localhost:8000/register', {
         username,
         password

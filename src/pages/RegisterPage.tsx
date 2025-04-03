@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
@@ -7,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import { UserPlus, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
 const RegisterPage = () => {
   const [username, setUsername] = useState('');
@@ -21,6 +22,16 @@ const RegisterPage = () => {
     e.preventDefault();
     setError('');
     
+    if (!username.trim()) {
+      setError('Username is required');
+      return;
+    }
+    
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return;
+    }
+    
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
@@ -30,9 +41,15 @@ const RegisterPage = () => {
     
     try {
       await register(username, password);
+      toast.success('Account created successfully!');
       navigate('/login');
     } catch (error) {
       console.error('Registration failed:', error);
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -48,6 +65,11 @@ const RegisterPage = () => {
       >
         <Card className="border-border bg-card/80 backdrop-blur-sm">
           <CardHeader className="space-y-1">
+            <div className="flex justify-center mb-2">
+              <div className="rounded-full bg-api-primary/10 p-3">
+                <UserPlus className="h-6 w-6 text-api-primary" />
+              </div>
+            </div>
             <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
             <CardDescription className="text-center">
               Register to access the API Hub platform
@@ -63,6 +85,7 @@ const RegisterPage = () => {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  className="bg-background/50"
                 />
               </div>
               <div className="space-y-2">
@@ -74,6 +97,7 @@ const RegisterPage = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  className="bg-background/50"
                 />
               </div>
               <div className="space-y-2">
@@ -85,10 +109,14 @@ const RegisterPage = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  className="bg-background/50"
                 />
               </div>
               {error && (
-                <div className="text-destructive text-sm">{error}</div>
+                <div className="bg-destructive/10 p-3 rounded-md flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                  <span className="text-destructive text-sm">{error}</span>
+                </div>
               )}
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
