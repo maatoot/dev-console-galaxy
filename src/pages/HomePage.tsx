@@ -3,11 +3,12 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Code, Database, Zap } from 'lucide-react';
+import { ArrowRight, Code, Database, Zap, Package, Send, Key, MousePointerClick } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 const HomePage = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, userRole } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -28,16 +29,25 @@ const HomePage = () => {
           </p>
           <div className="pt-4 flex flex-wrap gap-4">
             {isAuthenticated ? (
-              <Button asChild size="lg" className="bg-api-primary hover:bg-api-primary/90">
-                <Link to="/dashboard">
-                  Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+              <>
+                <Button asChild size="lg" className="bg-api-primary hover:bg-api-primary/90">
+                  <Link to="/apis">
+                    Browse APIs <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+                {userRole === 'provider' && (
+                  <Button asChild size="lg" variant="outline">
+                    <Link to="/apis">
+                      Publish an API <Package className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
+              </>
             ) : (
               <>
                 <Button asChild size="lg" className="bg-api-primary hover:bg-api-primary/90">
-                  <Link to="/login">
-                    Get Started <ArrowRight className="ml-2 h-4 w-4" />
+                  <Link to="/apis">
+                    Browse APIs <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
@@ -64,6 +74,36 @@ const HomePage = () => {
         </motion.div>
       </section>
 
+      {/* Quick Access Section */}
+      <section className="py-8 px-8 md:px-16">
+        <h2 className="text-2xl font-bold mb-6">Quick Access</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card className="bg-card/50 hover:bg-card/70 transition-colors cursor-pointer" onClick={() => window.location.href = "/apis"}>
+            <CardContent className="p-6 flex flex-col items-center text-center">
+              <Package className="h-12 w-12 text-api-primary mb-4" />
+              <h3 className="text-lg font-medium">Browse APIs</h3>
+              <p className="text-muted-foreground mt-2">Explore our marketplace of available APIs</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-card/50 hover:bg-card/70 transition-colors cursor-pointer" onClick={() => window.location.href = "/tester"}>
+            <CardContent className="p-6 flex flex-col items-center text-center">
+              <Send className="h-12 w-12 text-api-secondary mb-4" />
+              <h3 className="text-lg font-medium">API Tester</h3>
+              <p className="text-muted-foreground mt-2">Test API endpoints with our integrated tool</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-card/50 hover:bg-card/70 transition-colors cursor-pointer" onClick={() => window.location.href = isAuthenticated ? "/subscriptions" : "/login"}>
+            <CardContent className="p-6 flex flex-col items-center text-center">
+              <Key className="h-12 w-12 text-api-accent mb-4" />
+              <h3 className="text-lg font-medium">Your Subscriptions</h3>
+              <p className="text-muted-foreground mt-2">Manage your API subscriptions and keys</p>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section className="py-16 px-8 md:px-16 bg-gradient-to-b from-transparent to-api-dark/50">
         <h2 className="text-3xl font-bold text-center mb-12">Everything You Need for API Success</h2>
@@ -81,9 +121,9 @@ const HomePage = () => {
               description: "Manage your API subscriptions, keys, and monitor usage all in one place."
             },
             {
-              icon: <Zap className="h-10 w-10 text-api-accent" />,
-              title: "Provider Studio",
-              description: "Publish your APIs, manage versions, and grow your audience of developers."
+              icon: <MousePointerClick className="h-10 w-10 text-api-accent" />,
+              title: "Interactive Testing",
+              description: "Test APIs directly in your browser with our powerful API testing tool."
             }
           ].map((feature, index) => (
             <motion.div
@@ -115,8 +155,8 @@ const HomePage = () => {
             publish, and integrate APIs with ease.
           </p>
           <Button asChild size="lg" className="mt-6 bg-api-primary hover:bg-api-primary/90">
-            <Link to={isAuthenticated ? "/dashboard" : "/register"}>
-              {isAuthenticated ? "Go to Dashboard" : "Sign Up Now"} <ArrowRight className="ml-2 h-4 w-4" />
+            <Link to={isAuthenticated ? "/apis" : "/register"}>
+              {isAuthenticated ? "Browse APIs" : "Sign Up Now"} <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
         </motion.div>

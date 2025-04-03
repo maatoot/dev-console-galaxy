@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,36 +8,53 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, Search, PlusCircle, Tag, Copy } from 'lucide-react';
+import { Package, Search, PlusCircle, Tag, Copy, AlertCircle } from 'lucide-react';
 import apiService from '@/services/apiClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
+import { useNavigate } from 'react-router-dom';
 
 interface API {
   id: string;
   name: string;
   description: string;
+  baseUrl: string;
   endpoint: string;
   version: string;
   visibility: 'public' | 'private';
   provider_id: string;
+  authentication?: {
+    type: 'none' | 'basic' | 'bearer' | 'apiKey';
+    apiKeyName?: string;
+    apiKeyLocation?: 'header' | 'query';
+  };
+  defaultHeaders?: Record<string, string>;
 }
 
 const ApisPage = () => {
-  const { user } = useAuth();
+  const { user, isAuthenticated, userRole } = useAuth();
+  const navigate = useNavigate();
   const [apis, setApis] = useState<API[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [subscribeDialogOpen, setSubscribeDialogOpen] = useState(false);
   const [selectedApi, setSelectedApi] = useState<API | null>(null);
+  const [authType, setAuthType] = useState<'none' | 'basic' | 'bearer' | 'apiKey'>('none');
   
   const [newApiForm, setNewApiForm] = useState({
     name: '',
     description: '',
+    baseUrl: '',
     endpoint: '',
     version: '1.0.0',
-    visibility: 'public'
+    visibility: 'public',
+    authentication: {
+      type: 'none',
+      apiKeyName: '',
+      apiKeyLocation: 'header'
+    },
+    defaultHeaders: '{}'
   });
   
   const [subscriptionForm, setSubscriptionForm] = useState({
@@ -70,8 +88,29 @@ const ApisPage = () => {
 
   const handleCreateApi = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     try {
-      await apiService.apis.create(newApiForm);
+      let defaultHeadersObj = {};
+      
+      try {
+        defaultHeadersObj = JSON.parse(newApiForm.defaultHeaders);
+      } catch (err) {
+        toast('Warning', {
+          description: 'Invalid JSON in default headers. Using empty headers.',
+          variant: 'destructive'
+        });
+      }
+      
+      const apiData = {
+        ...newApiForm,
+        defaultHeaders: defaultHeadersObj,
+        authentication: {
+          ...newApiForm.authentication,
+          type: authType
+        }
+      };
+      
+      await apiService.apis.create(apiData);
       toast('Success', {
         description: 'API created successfully.',
       });
@@ -79,9 +118,16 @@ const ApisPage = () => {
       setNewApiForm({
         name: '',
         description: '',
+        baseUrl: '',
         endpoint: '',
         version: '1.0.0',
-        visibility: 'public'
+        visibility: 'public',
+        authentication: {
+          type: 'none',
+          apiKeyName: '',
+          apiKeyLocation: 'header'
+        },
+        defaultHeaders: '{}'
       });
       
       setCreateDialogOpen(false);
@@ -99,6 +145,15 @@ const ApisPage = () => {
   const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedApi) return;
+    
+    if (!isAuthenticated) {
+      toast('Error', {
+        description: 'You need to be logged in to subscribe to APIs.',
+        variant: 'destructive'
+      });
+      navigate('/login');
+      return;
+    }
     
     try {
       await apiService.subscriptions.create({
@@ -122,6 +177,10 @@ const ApisPage = () => {
     }
   };
 
+  const testApi = (apiKey: string) => {
+    navigate(`/tester?apiKey=${apiKey}`);
+  };
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -130,89 +189,183 @@ const ApisPage = () => {
     );
   }
 
+  const isProvider = userRole === 'provider' || userRole === 'admin';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold tracking-tight">API Hub</h1>
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Create API
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <form onSubmit={handleCreateApi}>
-              <DialogHeader>
-                <DialogTitle>Create New API</DialogTitle>
-                <DialogDescription>
-                  Add a new API to the marketplace. Fill in the details below.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">API Name</Label>
-                  <Input
-                    id="name"
-                    value={newApiForm.name}
-                    onChange={(e) => setNewApiForm({...newApiForm, name: e.target.value})}
-                    placeholder="Weather API"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={newApiForm.description}
-                    onChange={(e) => setNewApiForm({...newApiForm, description: e.target.value})}
-                    placeholder="A comprehensive weather data API..."
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="endpoint">Endpoint URL</Label>
-                  <Input
-                    id="endpoint"
-                    value={newApiForm.endpoint}
-                    onChange={(e) => setNewApiForm({...newApiForm, endpoint: e.target.value})}
-                    placeholder="https://api.example.com/weather"
-                    required
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+        
+        {isProvider && (
+          <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create API
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[600px]">
+              <form onSubmit={handleCreateApi}>
+                <DialogHeader>
+                  <DialogTitle>Create New API</DialogTitle>
+                  <DialogDescription>
+                    Add a new API to the marketplace. Fill in the details below.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="version">Version</Label>
+                    <Label htmlFor="name">API Name</Label>
                     <Input
-                      id="version"
-                      value={newApiForm.version}
-                      onChange={(e) => setNewApiForm({...newApiForm, version: e.target.value})}
-                      placeholder="1.0.0"
+                      id="name"
+                      value={newApiForm.name}
+                      onChange={(e) => setNewApiForm({...newApiForm, name: e.target.value})}
+                      placeholder="Weather API"
+                      required
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="visibility">Visibility</Label>
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={newApiForm.description}
+                      onChange={(e) => setNewApiForm({...newApiForm, description: e.target.value})}
+                      placeholder="A comprehensive weather data API..."
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="baseUrl">Base URL</Label>
+                    <Input
+                      id="baseUrl"
+                      value={newApiForm.baseUrl}
+                      onChange={(e) => setNewApiForm({...newApiForm, baseUrl: e.target.value})}
+                      placeholder="https://api.example.com"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="endpoint">Endpoint Path</Label>
+                    <Input
+                      id="endpoint"
+                      value={newApiForm.endpoint}
+                      onChange={(e) => setNewApiForm({...newApiForm, endpoint: e.target.value})}
+                      placeholder="/weather"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="version">Version</Label>
+                      <Input
+                        id="version"
+                        value={newApiForm.version}
+                        onChange={(e) => setNewApiForm({...newApiForm, version: e.target.value})}
+                        placeholder="1.0.0"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="visibility">Visibility</Label>
+                      <Select 
+                        value={newApiForm.visibility} 
+                        onValueChange={(value) => setNewApiForm({...newApiForm, visibility: value})}
+                      >
+                        <SelectTrigger id="visibility">
+                          <SelectValue placeholder="Select visibility" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="public">Public</SelectItem>
+                          <SelectItem value="private">Private</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="authType">Authentication Type</Label>
                     <Select 
-                      value={newApiForm.visibility} 
-                      onValueChange={(value) => setNewApiForm({...newApiForm, visibility: value})}
+                      value={authType} 
+                      onValueChange={(value: 'none' | 'basic' | 'bearer' | 'apiKey') => {
+                        setAuthType(value);
+                        setNewApiForm({
+                          ...newApiForm, 
+                          authentication: {
+                            ...newApiForm.authentication,
+                            type: value
+                          }
+                        });
+                      }}
                     >
-                      <SelectTrigger id="visibility">
-                        <SelectValue placeholder="Select visibility" />
+                      <SelectTrigger id="authType">
+                        <SelectValue placeholder="Select authentication type" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="public">Public</SelectItem>
-                        <SelectItem value="private">Private</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="basic">Basic Auth</SelectItem>
+                        <SelectItem value="bearer">Bearer Token</SelectItem>
+                        <SelectItem value="apiKey">API Key</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  
+                  {authType === 'apiKey' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="apiKeyName">API Key Name</Label>
+                        <Input
+                          id="apiKeyName"
+                          value={newApiForm.authentication.apiKeyName}
+                          onChange={(e) => setNewApiForm({
+                            ...newApiForm, 
+                            authentication: {
+                              ...newApiForm.authentication,
+                              apiKeyName: e.target.value
+                            }
+                          })}
+                          placeholder="X-API-Key"
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="apiKeyLocation">API Key Location</Label>
+                        <Select 
+                          value={newApiForm.authentication.apiKeyLocation} 
+                          onValueChange={(value: 'header' | 'query') => setNewApiForm({
+                            ...newApiForm, 
+                            authentication: {
+                              ...newApiForm.authentication,
+                              apiKeyLocation: value
+                            }
+                          })}
+                        >
+                          <SelectTrigger id="apiKeyLocation">
+                            <SelectValue placeholder="Select location" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="header">Header</SelectItem>
+                            <SelectItem value="query">Query Parameter</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="grid gap-2">
+                    <Label htmlFor="defaultHeaders">Default Headers (JSON)</Label>
+                    <Textarea
+                      id="defaultHeaders"
+                      value={newApiForm.defaultHeaders}
+                      onChange={(e) => setNewApiForm({...newApiForm, defaultHeaders: e.target.value})}
+                      placeholder='{"Content-Type": "application/json"}'
+                      className="font-mono text-xs"
+                    />
+                  </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit">Create API</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button type="submit">Create API</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <div className="flex items-center space-x-2">
@@ -225,11 +378,29 @@ const ApisPage = () => {
         />
       </div>
 
+      {!isAuthenticated && (
+        <Card className="bg-yellow-950/20 border-yellow-900">
+          <CardContent className="p-4 flex items-center space-x-3">
+            <AlertCircle className="h-5 w-5 text-yellow-500" />
+            <p className="text-sm text-yellow-400">
+              Sign in or create an account to subscribe to APIs and get access to API keys.{' '}
+              <Button variant="link" className="p-0 text-yellow-500" onClick={() => navigate('/login')}>
+                Sign in now
+              </Button>
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs defaultValue="all">
         <TabsList>
           <TabsTrigger value="all">All APIs</TabsTrigger>
-          <TabsTrigger value="subscribed">Subscribed</TabsTrigger>
-          <TabsTrigger value="my-apis">My APIs</TabsTrigger>
+          {isAuthenticated && (
+            <>
+              <TabsTrigger value="subscribed">My Subscriptions</TabsTrigger>
+              {isProvider && <TabsTrigger value="my-apis">My APIs</TabsTrigger>}
+            </>
+          )}
         </TabsList>
         <TabsContent value="all" className="mt-6">
           {filteredApis.length > 0 ? (
@@ -242,6 +413,10 @@ const ApisPage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Base URL:</span>
+                        <span className="font-mono text-xs truncate max-w-[180px]">{api.baseUrl}</span>
+                      </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Endpoint:</span>
                         <span className="font-mono text-xs truncate max-w-[180px]">{api.endpoint}</span>
@@ -257,6 +432,10 @@ const ApisPage = () => {
                           <span className="capitalize">{api.visibility}</span>
                         </div>
                       </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Auth:</span>
+                        <span className="capitalize">{api.authentication?.type || 'none'}</span>
+                      </div>
                     </div>
                   </CardContent>
                   <CardFooter>
@@ -267,7 +446,16 @@ const ApisPage = () => {
                       <DialogTrigger asChild>
                         <Button 
                           className="w-full"
-                          onClick={() => setSelectedApi(api)}
+                          onClick={() => {
+                            if (!isAuthenticated) {
+                              toast('Info', {
+                                description: 'Please sign in to subscribe to APIs',
+                              });
+                              navigate('/login');
+                              return;
+                            }
+                            setSelectedApi(api);
+                          }}
                         >
                           Subscribe
                         </Button>
@@ -320,6 +508,7 @@ const ApisPage = () => {
             </div>
           )}
         </TabsContent>
+
         <TabsContent value="subscribed" className="mt-6">
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
@@ -332,6 +521,7 @@ const ApisPage = () => {
             </Button>
           </div>
         </TabsContent>
+
         <TabsContent value="my-apis" className="mt-6">
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />

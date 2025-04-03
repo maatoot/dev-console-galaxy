@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,29 +8,80 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Send, Clock, Check, AlertTriangle, Copy } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye } from 'lucide-react';
 import apiService from '@/services/apiClient';
 import { toast } from '@/lib/toast';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface HeaderKeyValue {
+  key: string;
+  value: string;
+}
 
 const TesterPage = () => {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialApiKey = searchParams.get('apiKey') || '';
   
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [path, setPath] = useState('');
   const [method, setMethod] = useState('GET');
+  const [headersFormat, setHeadersFormat] = useState<'json' | 'keyValue'>('keyValue');
   const [headers, setHeaders] = useState('{}');
+  const [headersList, setHeadersList] = useState<HeaderKeyValue[]>([{ key: 'Content-Type', value: 'application/json' }]);
   const [body, setBody] = useState('');
   const [response, setResponse] = useState<any>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEmbedded, setIsEmbedded] = useState(false);
 
   useEffect(() => {
+    // Check if the component is embedded in an iframe
+    setIsEmbedded(window.self !== window.top);
+    
     if (initialApiKey) {
       setPath('test');
     }
-  }, [initialApiKey]);
+
+    // Check if user is not authenticated and not on embedded view
+    if (!isAuthenticated && !window.location.href.includes('?apiKey=') && !isEmbedded) {
+      toast('Info', {
+        description: 'Please sign in to access all API tester features',
+      });
+    }
+  }, [initialApiKey, isAuthenticated]);
+
+  useEffect(() => {
+    // Convert headersList to JSON when format changes to JSON
+    if (headersFormat === 'json') {
+      const headersObj = headersList.reduce((acc, header) => {
+        if (header.key.trim()) {
+          acc[header.key] = header.value;
+        }
+        return acc;
+      }, {} as Record<string, string>);
+      setHeaders(JSON.stringify(headersObj, null, 2));
+    }
+  }, [headersFormat, headersList]);
+
+  const handleAddHeader = () => {
+    setHeadersList([...headersList, { key: '', value: '' }]);
+  };
+
+  const handleRemoveHeader = (index: number) => {
+    const newHeaders = [...headersList];
+    newHeaders.splice(index, 1);
+    setHeadersList(newHeaders);
+  };
+
+  const handleHeaderChange = (index: number, field: 'key' | 'value', value: string) => {
+    const newHeaders = [...headersList];
+    newHeaders[index][field] = value;
+    setHeadersList(newHeaders);
+  };
 
   const handleSendRequest = async () => {
     if (!apiKey.trim()) {
@@ -61,8 +112,18 @@ const TesterPage = () => {
       let parsedBody = undefined;
       
       try {
-        if (headers.trim()) {
-          parsedHeaders = JSON.parse(headers);
+        if (headersFormat === 'json') {
+          if (headers.trim()) {
+            parsedHeaders = JSON.parse(headers);
+          }
+        } else {
+          // Convert key-value to object
+          parsedHeaders = headersList.reduce((acc, header) => {
+            if (header.key.trim()) {
+              acc[header.key] = header.value;
+            }
+            return acc;
+          }, {} as Record<string, string>);
         }
       } catch (e) {
         toast('Warning', {
@@ -135,13 +196,25 @@ const TesterPage = () => {
     });
   };
 
+  const openInNewWindow = () => {
+    window.open(`/tester?apiKey=${apiKey}`, '_blank');
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">API Tester</h1>
-        <p className="text-muted-foreground mt-2">
-          Test your API endpoints with the Gateway service.
-        </p>
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">API Tester</h1>
+          <p className="text-muted-foreground mt-2">
+            Test your API endpoints with the Gateway service.
+          </p>
+        </div>
+        {isEmbedded && (
+          <Button variant="outline" onClick={openInNewWindow}>
+            <Eye className="mr-2 h-4 w-4" />
+            Open in New Window
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -189,14 +262,63 @@ const TesterPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="headers">Headers (JSON)</Label>
-              <Textarea
-                id="headers"
-                value={headers}
-                onChange={(e) => setHeaders(e.target.value)}
-                placeholder='{"Content-Type": "application/json"}'
-                className="font-mono text-xs h-20"
-              />
+              <div className="flex justify-between items-center">
+                <Label htmlFor="headers">Headers</Label>
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm">JSON</span>
+                  <Switch 
+                    checked={headersFormat === 'json'} 
+                    onCheckedChange={(checked) => setHeadersFormat(checked ? 'json' : 'keyValue')} 
+                  />
+                </div>
+              </div>
+              
+              {headersFormat === 'json' ? (
+                <Textarea
+                  id="headers"
+                  value={headers}
+                  onChange={(e) => setHeaders(e.target.value)}
+                  placeholder='{"Content-Type": "application/json"}'
+                  className="font-mono text-xs h-24"
+                />
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {headersList.map((header, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <Input
+                        placeholder="Header"
+                        value={header.key}
+                        onChange={(e) => handleHeaderChange(index, 'key', e.target.value)}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Value"
+                        value={header.value}
+                        onChange={(e) => handleHeaderChange(index, 'value', e.target.value)}
+                        className="flex-1"
+                      />
+                      <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => handleRemoveHeader(index)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleAddHeader} 
+                    className="mt-2"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Header
+                  </Button>
+                </div>
+              )}
             </div>
             
             {['POST', 'PUT', 'PATCH'].includes(method) && (

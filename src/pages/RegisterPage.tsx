@@ -1,149 +1,131 @@
+
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { useNavigate, Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserPlus, AlertTriangle } from 'lucide-react';
-import { toast } from 'sonner';
 
 const RegisterPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [role, setRole] = useState<'consumer' | 'provider'>('consumer');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { register } = useAuth();
   const navigate = useNavigate();
+  const { register } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
-    if (!username.trim()) {
-      setError('Username is required');
-      return;
-    }
-    
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
-      return;
-    }
-    
+
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-    
-    setIsSubmitting(true);
-    
+
     try {
-      await register(username, password);
-      toast.success('Account created successfully!');
+      setLoading(true);
+      await register(username, password, role);
       navigate('/login');
-    } catch (error) {
-      console.error('Registration failed:', error);
-      if (error instanceof Error) {
-        setError(error.message);
-      } else {
-        setError('Registration failed. Please try again.');
-      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError('Failed to register. Please try a different username.');
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-api-dark to-background">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        <Card className="border-border bg-card/80 backdrop-blur-sm">
-          <CardHeader className="space-y-1">
-            <div className="flex justify-center mb-2">
-              <div className="rounded-full bg-api-primary/10 p-3">
-                <UserPlus className="h-6 w-6 text-api-primary" />
-              </div>
+    <div className="flex items-center justify-center min-h-screen bg-gray-950 text-white p-4">
+      <Card className="w-full max-w-md bg-gray-900 border-gray-800">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
+          <CardDescription className="text-gray-400">
+            Enter your details below to create your account
+          </CardDescription>
+        </CardHeader>
+        <form onSubmit={handleSubmit}>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="bg-gray-800 border-gray-700"
+              />
             </div>
-            <CardTitle className="text-2xl font-bold text-center">Create an account</CardTitle>
-            <CardDescription className="text-center">
-              Register to access the API Hub platform
-            </CardDescription>
-          </CardHeader>
-          <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  placeholder="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  required
-                  className="bg-background/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-background/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  className="bg-background/50"
-                />
-              </div>
-              {error && (
-                <div className="bg-destructive/10 p-3 rounded-md flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                  <span className="text-destructive text-sm">{error}</span>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="bg-gray-800 border-gray-700"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="bg-gray-800 border-gray-700"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Account Type</Label>
+              <RadioGroup value={role} onValueChange={(value) => setRole(value as 'consumer' | 'provider')} className="flex flex-col space-y-2">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="consumer" id="consumer" />
+                  <Label htmlFor="consumer" className="cursor-pointer">API Consumer (Use APIs)</Label>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="provider" id="provider" />
+                  <Label htmlFor="provider" className="cursor-pointer">API Provider (Publish APIs)</Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            {error && <p className="text-red-500 text-sm">{error}</p>}
+          </CardContent>
+          <CardFooter className="flex flex-col space-y-4">
+            <Button 
+              type="submit" 
+              className="w-full bg-api-primary hover:bg-api-primary/90" 
+              disabled={loading}
+            >
+              {loading ? (
+                <span className="flex items-center">
+                  <span className="spinner mr-2" />
+                  Creating account...
+                </span>
+              ) : (
+                'Sign up'
               )}
-            </CardContent>
-            <CardFooter className="flex flex-col space-y-4">
-              <Button 
-                type="submit" 
-                className="w-full bg-api-primary hover:bg-api-primary/90" 
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <div className="flex items-center justify-center">
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Creating account...
-                  </div>
-                ) : (
-                  'Sign up'
-                )}
-              </Button>
-              <p className="text-center text-sm text-muted-foreground">
-                Already have an account?{' '}
-                <Link to="/login" className="text-api-primary hover:text-api-primary/90 underline-offset-4 hover:underline">
-                  Sign in
-                </Link>
-              </p>
-            </CardFooter>
-          </form>
-        </Card>
-      </motion.div>
+            </Button>
+            <p className="text-center text-sm text-gray-400">
+              Already have an account?{' '}
+              <Link to="/login" className="text-api-primary hover:underline">
+                Sign in
+              </Link>
+            </p>
+          </CardFooter>
+        </form>
+      </Card>
     </div>
   );
 };

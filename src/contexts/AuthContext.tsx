@@ -5,7 +5,7 @@ import { toast } from '@/lib/toast';
 
 interface User {
   username: string;
-  role?: string;
+  role: 'provider' | 'consumer' | 'admin';
 }
 
 interface AuthContextType {
@@ -13,15 +13,16 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  userRole: 'provider' | 'consumer' | 'admin' | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string) => Promise<void>;
+  register: (username: string, password: string, role: 'provider' | 'consumer') => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Mock user database for demo purposes
-const mockUsers: Record<string, { username: string; password: string }> = {};
+const mockUsers: Record<string, { username: string; password: string; role: 'provider' | 'consumer' | 'admin' }> = {};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -51,7 +52,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (mockUsers[username] && mockUsers[username].password === password) {
           // Create a simple token (in a real app, this would be a JWT from the server)
           const mockToken = `mock-token-${Date.now()}`;
-          const userObj = { username };
+          const userObj = { 
+            username,
+            role: mockUsers[username].role
+          };
           
           setToken(mockToken);
           setUser(userObj);
@@ -74,17 +78,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         password
       });
 
-      const { access_token } = response.data;
-      
-      // Create a basic user object
-      const userObj = { username };
+      const { access_token, user: userData } = response.data;
       
       setToken(access_token);
-      setUser(userObj);
+      setUser(userData);
       
       // Store in localStorage
       localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(userObj));
+      localStorage.setItem('user', JSON.stringify(userData));
       
       toast('Success', {
         description: 'You have successfully logged in.',
@@ -101,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (username: string, password: string) => {
+  const register = async (username: string, password: string, role: 'provider' | 'consumer') => {
     try {
       setIsLoading(true);
       
@@ -115,10 +116,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store the new user
         mockUsers[username] = {
           username,
-          password
+          password,
+          role
         };
         
-        console.log('Registered user in mock database:', username);
+        console.log('Registered user in mock database:', username, 'with role:', role);
         
         toast('Success', {
           description: 'Registration successful. Please log in.',
@@ -129,7 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // This will only run in production with actual backend
       await axios.post('http://localhost:8000/register', {
         username,
-        password
+        password,
+        role
       });
       
       toast('Success', {
@@ -163,6 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       token, 
       isLoading, 
       isAuthenticated: !!user,
+      userRole: user?.role || null,
       login, 
       register, 
       logout 
