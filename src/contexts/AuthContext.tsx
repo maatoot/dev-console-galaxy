@@ -6,7 +6,7 @@ import { toast } from '@/lib/toast';
 interface User {
   username: string;
   role: 'provider' | 'consumer' | 'admin';
-  id?: string; // Adding id property to fix the build error
+  id: string;
 }
 
 interface AuthContextType {
@@ -22,8 +22,64 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user database for demo purposes - changing to use an object instead of a variable
-const mockUsers: Record<string, { username: string; password: string; role: 'provider' | 'consumer' | 'admin'; id: string }> = {};
+// Enhanced mock database with localStorage persistence
+const STORAGE_KEYS = {
+  MOCK_USERS: 'api_hub_mock_users',
+  MOCK_APIS: 'api_hub_mock_apis',
+  MOCK_SUBSCRIPTIONS: 'api_hub_mock_subscriptions',
+  MOCK_USAGE_LOGS: 'api_hub_mock_usage_logs'
+};
+
+interface MockUser {
+  username: string;
+  password: string;
+  role: 'provider' | 'consumer' | 'admin';
+  id: string;
+}
+
+const getStoredMockUsers = (): Record<string, MockUser> => {
+  const stored = localStorage.getItem(STORAGE_KEYS.MOCK_USERS);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse stored mock users:', e);
+    }
+  }
+  return {};
+};
+
+const setStoredMockUsers = (users: Record<string, MockUser>) => {
+  localStorage.setItem(STORAGE_KEYS.MOCK_USERS, JSON.stringify(users));
+};
+
+let mockUsers = getStoredMockUsers();
+
+// Initialize with admin if empty
+if (Object.keys(mockUsers).length === 0) {
+  const adminId = `admin-${Date.now()}`;
+  mockUsers = {
+    admin: {
+      username: 'admin',
+      password: 'admin123',
+      role: 'admin',
+      id: adminId
+    },
+    provider: {
+      username: 'provider',
+      password: 'provider123',
+      role: 'provider',
+      id: `provider-${Date.now()}`
+    },
+    consumer: {
+      username: 'consumer',
+      password: 'consumer123',
+      role: 'consumer',
+      id: `consumer-${Date.now()}`
+    }
+  };
+  setStoredMockUsers(mockUsers);
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -36,8 +92,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedUser = localStorage.getItem('user');
     
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error('Failed to parse stored user:', e);
+        // Clear invalid storage
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
     
     setIsLoading(false);
@@ -47,55 +110,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       
-      // For demo environment, check against our mock database
-      if (import.meta.env.DEV || window.location.href.includes('lovableproject.com')) {
-        console.log('Trying to login with mock user:', username);
-        console.log('Available mock users:', Object.keys(mockUsers));
+      // Always use mock database for demo
+      console.log('Trying to login with mock user:', username);
+      console.log('Available mock users:', Object.keys(mockUsers));
+      
+      // Check if user exists and password matches
+      if (mockUsers[username] && mockUsers[username].password === password) {
+        // Create a simple token
+        const mockToken = `mock-token-${Date.now()}`;
+        const userObj = { 
+          username,
+          role: mockUsers[username].role,
+          id: mockUsers[username].id
+        };
         
-        // Check if user exists and password matches
-        if (mockUsers[username] && mockUsers[username].password === password) {
-          // Create a simple token (in a real app, this would be a JWT from the server)
-          const mockToken = `mock-token-${Date.now()}`;
-          const userObj = { 
-            username,
-            role: mockUsers[username].role,
-            id: mockUsers[username].id
-          };
-          
-          setToken(mockToken);
-          setUser(userObj);
-          
-          localStorage.setItem('token', mockToken);
-          localStorage.setItem('user', JSON.stringify(userObj));
-          localStorage.setItem('userId', mockUsers[username].id);
-          
-          toast('Success', {
-            description: 'You have successfully logged in.',
-          });
-          return;
-        } else {
-          throw new Error('Invalid credentials');
-        }
+        setToken(mockToken);
+        setUser(userObj);
+        
+        localStorage.setItem('token', mockToken);
+        localStorage.setItem('user', JSON.stringify(userObj));
+        localStorage.setItem('userId', mockUsers[username].id);
+        
+        toast('Success', {
+          description: 'You have successfully logged in.',
+        });
+        return;
+      } else {
+        throw new Error('Invalid credentials');
       }
-      
-      // This will only run in production with actual backend
-      const response = await axios.post('http://localhost:8000/login', {
-        username,
-        password
-      });
-
-      const { access_token, user: userData } = response.data;
-      
-      setToken(access_token);
-      setUser(userData);
-      
-      // Store in localStorage
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      toast('Success', {
-        description: 'You have successfully logged in.',
-      });
     } catch (error) {
       console.error('Login error:', error);
       toast('Error', {
@@ -112,42 +154,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoading(true);
       
-      // For demo environment, store in our mock database
-      if (import.meta.env.DEV || window.location.href.includes('lovableproject.com')) {
-        // Check if username already exists
-        if (mockUsers[username]) {
-          throw new Error('Username already exists');
-        }
-        
-        // Generate a mock user ID
-        const userId = `user-${Date.now()}`;
-        
-        // Store the new user
-        mockUsers[username] = {
-          username,
-          password,
-          role,
-          id: userId
-        };
-        
-        console.log('Registered user in mock database:', username, 'with role:', role, 'and ID:', userId);
-        
-        toast('Success', {
-          description: 'Registration successful. Please log in.',
-        });
-        return;
+      // Check if username already exists
+      if (mockUsers[username]) {
+        throw new Error('Username already exists');
       }
       
-      // This will only run in production with actual backend
-      await axios.post('http://localhost:8000/register', {
+      // Generate a mock user ID
+      const userId = `user-${Date.now()}`;
+      
+      // Store the new user
+      const newUser = {
         username,
         password,
-        role
-      });
+        role,
+        id: userId
+      };
+      
+      mockUsers[username] = newUser;
+      setStoredMockUsers(mockUsers);
+      
+      console.log('Registered user in mock database:', username, 'with role:', role, 'and ID:', userId);
       
       toast('Success', {
         description: 'Registration successful. Please log in.',
       });
+      return;
     } catch (error) {
       console.error('Registration error:', error);
       toast('Error', {

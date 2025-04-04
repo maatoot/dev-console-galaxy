@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye } from 'lucide-react';
+import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History } from 'lucide-react';
 import apiService from '@/services/apiClient';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,15 +19,25 @@ interface HeaderKeyValue {
   value: string;
 }
 
+interface RequestLog {
+  timestamp: string;
+  method: string;
+  path: string;
+  status: number | null;
+  responseTime: number | null;
+}
+
 const TesterPage = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialApiKey = searchParams.get('apiKey') || '';
   const initialPath = searchParams.get('path') || '';
+  const initialTestUrl = searchParams.get('testUrl') || '';
   
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [path, setPath] = useState(initialPath);
+  const [testUrl, setTestUrl] = useState(initialTestUrl);
   const [method, setMethod] = useState('GET');
   const [headersFormat, setHeadersFormat] = useState<'json' | 'keyValue'>('keyValue');
   const [headers, setHeaders] = useState('{}');
@@ -37,12 +48,32 @@ const TesterPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isEmbedded, setIsEmbedded] = useState(false);
+  const [requestLogs, setRequestLogs] = useState<RequestLog[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
 
   useEffect(() => {
     setIsEmbedded(window.self !== window.top);
     
+    // Load request logs from localStorage
+    const storedLogs = localStorage.getItem('api_tester_request_logs');
+    if (storedLogs) {
+      try {
+        setRequestLogs(JSON.parse(storedLogs));
+      } catch (e) {
+        console.error('Failed to parse stored request logs:', e);
+      }
+    }
+    
     if (initialApiKey) {
-      setPath('test');
+      // If we have an API key but no path, set a default
+      if (!initialPath) {
+        setPath('');
+      }
+      
+      // If we have a test URL, use it
+      if (initialTestUrl) {
+        setTestUrl(initialTestUrl);
+      }
     }
 
     if (!isAuthenticated && !window.location.href.includes('?apiKey=') && !isEmbedded) {
@@ -50,17 +81,21 @@ const TesterPage = () => {
         description: 'Please sign in to access all API tester features',
       });
     }
-  }, [initialApiKey, isAuthenticated]);
+  }, [initialApiKey, initialPath, initialTestUrl, isAuthenticated]);
 
   useEffect(() => {
     if (headersFormat === 'json') {
-      const headersObj = headersList.reduce((acc, header) => {
-        if (header.key.trim()) {
-          acc[header.key] = header.value;
-        }
-        return acc;
-      }, {} as Record<string, string>);
-      setHeaders(JSON.stringify(headersObj, null, 2));
+      try {
+        const headersObj = headersList.reduce((acc, header) => {
+          if (header.key.trim()) {
+            acc[header.key] = header.value;
+          }
+          return acc;
+        }, {} as Record<string, string>);
+        setHeaders(JSON.stringify(headersObj, null, 2));
+      } catch (e) {
+        console.error('Error converting headers to JSON:', e);
+      }
     }
   }, [headersFormat, headersList]);
 
@@ -80,6 +115,12 @@ const TesterPage = () => {
     setHeadersList(newHeaders);
   };
 
+  const saveRequestLog = (log: RequestLog) => {
+    const updatedLogs = [log, ...requestLogs.slice(0, 19)]; // Keep only last 20 logs
+    setRequestLogs(updatedLogs);
+    localStorage.setItem('api_tester_request_logs', JSON.stringify(updatedLogs));
+  };
+
   const handleSendRequest = async () => {
     if (!apiKey.trim()) {
       toast('Error', {
@@ -89,9 +130,23 @@ const TesterPage = () => {
       return;
     }
     
-    if (!path.trim()) {
+    let finalPath = path.trim();
+    
+    // If test URL is provided, use it instead
+    if (testUrl.trim()) {
+      try {
+        const url = new URL(testUrl);
+        finalPath = url.pathname.substring(1) + url.search;
+      } catch (e) {
+        toast('Error', {
+          description: 'Invalid test URL. Please check the format.',
+          variant: 'destructive'
+        });
+        return;
+      }
+    } else if (!finalPath) {
       toast('Error', {
-        description: 'Please enter a path.',
+        description: 'Please enter a path or test URL.',
         variant: 'destructive'
       });
       return;
@@ -103,6 +158,13 @@ const TesterPage = () => {
     setResponseTime(null);
     
     const startTime = performance.now();
+    const requestLog: RequestLog = {
+      timestamp: new Date().toISOString(),
+      method,
+      path: finalPath,
+      status: null,
+      responseTime: null
+    };
     
     try {
       let parsedHeaders = {};
@@ -139,14 +201,15 @@ const TesterPage = () => {
         });
       }
       
-      const response = await apiService.gateway.proxy(apiKey, path, {
+      const response = await apiService.gateway.proxy(apiKey, finalPath, {
         method,
         headers: parsedHeaders,
         data: parsedBody
       });
       
       const endTime = performance.now();
-      setResponseTime(Math.round(endTime - startTime));
+      const responseTimeMs = Math.round(endTime - startTime);
+      setResponseTime(responseTimeMs);
       
       setResponse({
         status: response.status,
@@ -154,9 +217,16 @@ const TesterPage = () => {
         data: response.data,
         headers: response.headers
       });
+      
+      // Update and save request log
+      requestLog.status = response.status;
+      requestLog.responseTime = responseTimeMs;
+      saveRequestLog(requestLog);
+      
     } catch (error: any) {
       const endTime = performance.now();
-      setResponseTime(Math.round(endTime - startTime));
+      const responseTimeMs = Math.round(endTime - startTime);
+      setResponseTime(responseTimeMs);
       
       console.error('API request error:', error);
       
@@ -167,11 +237,21 @@ const TesterPage = () => {
           data: error.response.data,
           headers: error.response.headers
         });
+        
+        // Update request log with error status
+        requestLog.status = error.response.status;
+        requestLog.responseTime = responseTimeMs;
       } else if (error.request) {
         setError('No response received from server. Check the API endpoint and your network connection.');
+        requestLog.status = 0;
+        requestLog.responseTime = responseTimeMs;
       } else {
         setError(`Error: ${error.message}`);
+        requestLog.status = 500;
+        requestLog.responseTime = responseTimeMs;
       }
+      
+      saveRequestLog(requestLog);
     } finally {
       setLoading(false);
     }
@@ -196,7 +276,13 @@ const TesterPage = () => {
     const params = new URLSearchParams();
     if (apiKey) params.append('apiKey', apiKey);
     if (path) params.append('path', path);
+    if (testUrl) params.append('testUrl', testUrl);
     window.open(`/tester?${params.toString()}`, '_blank');
+  };
+
+  const formatDate = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString() + ' ' + date.toLocaleDateString();
   };
 
   return (
@@ -208,13 +294,82 @@ const TesterPage = () => {
             Test your API endpoints with the Gateway service.
           </p>
         </div>
-        {isEmbedded && (
-          <Button variant="outline" onClick={openInNewWindow}>
-            <Eye className="mr-2 h-4 w-4" />
-            Open in New Window
+        <div className="flex space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={() => setShowLogs(!showLogs)}
+            className="flex items-center"
+          >
+            <History className="mr-2 h-4 w-4" />
+            {showLogs ? 'Hide History' : 'Show History'}
           </Button>
-        )}
+          {isEmbedded && (
+            <Button variant="outline" onClick={openInNewWindow}>
+              <Eye className="mr-2 h-4 w-4" />
+              Open in New Window
+            </Button>
+          )}
+        </div>
       </div>
+
+      {showLogs && requestLogs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Request History</CardTitle>
+            <CardDescription>Your recent API test requests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-2 font-medium">Time</th>
+                    <th className="text-left py-2 font-medium">Method</th>
+                    <th className="text-left py-2 font-medium">Path</th>
+                    <th className="text-left py-2 font-medium">Status</th>
+                    <th className="text-left py-2 font-medium">Response Time</th>
+                    <th className="text-left py-2 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requestLogs.map((log, index) => (
+                    <tr key={index} className="border-b hover:bg-muted/50 cursor-pointer">
+                      <td className="py-2">{formatDate(log.timestamp)}</td>
+                      <td className="py-2">{log.method}</td>
+                      <td className="py-2 max-w-[200px] truncate">{log.path}</td>
+                      <td className="py-2">
+                        {log.status ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            log.status >= 200 && log.status < 300
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {log.status}
+                          </span>
+                        ) : 'N/A'}
+                      </td>
+                      <td className="py-2">{log.responseTime ? `${log.responseTime}ms` : 'N/A'}</td>
+                      <td className="py-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => {
+                            setMethod(log.method);
+                            setPath(log.path);
+                            setTestUrl('');
+                          }}
+                        >
+                          Reuse
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -230,7 +385,22 @@ const TesterPage = () => {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="550e8400-e29b-41d4-a716-446655440000"
+                className="font-mono text-xs"
               />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="test-url">Test URL (Optional)</Label>
+              <Input
+                id="test-url"
+                value={testUrl}
+                onChange={(e) => setTestUrl(e.target.value)}
+                placeholder="https://api.example.com/endpoint?param=value"
+                className="font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">
+                If provided, this URL will be used instead of the path below.
+              </p>
             </div>
             
             <div className="grid grid-cols-12 gap-4">
@@ -256,6 +426,7 @@ const TesterPage = () => {
                   value={path}
                   onChange={(e) => setPath(e.target.value)}
                   placeholder="test"
+                  className="font-mono text-xs"
                 />
               </div>
             </div>
@@ -288,13 +459,13 @@ const TesterPage = () => {
                         placeholder="Header"
                         value={header.key}
                         onChange={(e) => handleHeaderChange(index, 'key', e.target.value)}
-                        className="flex-1"
+                        className="flex-1 font-mono text-xs"
                       />
                       <Input
                         placeholder="Value"
                         value={header.value}
                         onChange={(e) => handleHeaderChange(index, 'value', e.target.value)}
-                        className="flex-1"
+                        className="flex-1 font-mono text-xs"
                       />
                       <Button 
                         type="button" 
