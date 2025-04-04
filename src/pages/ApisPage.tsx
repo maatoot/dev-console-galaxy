@@ -39,10 +39,19 @@ interface API {
   logo?: string;
 }
 
+interface Subscription {
+  id: string;
+  api_id: string;
+  plan: string;
+  user_id: string;
+  api_key: string;
+}
+
 const ApisPage = () => {
   const { user, isAuthenticated, userRole } = useAuth();
   const navigate = useNavigate();
   const [apis, setApis] = useState<API[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -80,7 +89,10 @@ const ApisPage = () => {
   
   useEffect(() => {
     fetchApis();
-  }, []);
+    if (isAuthenticated) {
+      fetchSubscriptions();
+    }
+  }, [isAuthenticated]);
 
   const fetchApis = async () => {
     try {
@@ -98,10 +110,23 @@ const ApisPage = () => {
     }
   };
 
+  const fetchSubscriptions = async () => {
+    try {
+      const response = await apiService.subscriptions.list();
+      setSubscriptions(response.data || []);
+    } catch (error) {
+      console.error('Error fetching subscriptions:', error);
+    }
+  };
+
   const filteredApis = apis.filter(api => 
     api.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     api.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const isSubscribed = (apiId: string) => {
+    return subscriptions.some(sub => sub.api_id === apiId);
+  };
 
   const handleCreateApi = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,6 +249,7 @@ const ApisPage = () => {
       setSubscribeDialogOpen(false);
       setSelectedApi(null);
       setSubscriptionForm({ plan: 'free' });
+      fetchSubscriptions();
     } catch (error) {
       console.error('Error subscribing to API:', error);
       toast('Error', {
@@ -233,14 +259,23 @@ const ApisPage = () => {
     }
   };
 
-  const testApi = (apiKey: string) => {
-    navigate(`/tester?apiKey=${apiKey}`);
+  const testApi = (apiId: string) => {
+    const subscription = subscriptions.find(sub => sub.api_id === apiId);
+    if (subscription) {
+      navigate(`/tester?apiKey=${subscription.api_key}`);
+    } else {
+      navigate(`/tester`);
+    }
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setLogoFile(e.target.files[0]);
     }
+  };
+
+  const handleApiClick = (api: API) => {
+    navigate(`/apis/${api.id}`);
   };
 
   if (loading) {
@@ -252,6 +287,7 @@ const ApisPage = () => {
   }
 
   const isProvider = userRole === 'provider' || userRole === 'admin';
+  const myApis = isProvider ? apis.filter(api => api.provider_id === user?.id) : [];
 
   return (
     <div className="space-y-6">
@@ -503,7 +539,7 @@ const ApisPage = () => {
           {filteredApis.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
               {filteredApis.map((api) => (
-                <Card key={api.id}>
+                <Card key={api.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleApiClick(api)}>
                   <CardHeader>
                     {api.logo && (
                       <div className="w-12 h-12 mb-2">
@@ -523,12 +559,17 @@ const ApisPage = () => {
                         <div className="space-y-1">
                           <span className="text-muted-foreground">Endpoints:</span>
                           <ul className="space-y-1 ml-4">
-                            {api.endpoints.map((endpoint, index) => (
+                            {api.endpoints.slice(0, 2).map((endpoint, index) => (
                               <li key={index} className="font-mono text-xs truncate">
                                 {endpoint.path}
                                 {endpoint.description && <span className="ml-1 text-muted-foreground">- {endpoint.description}</span>}
                               </li>
                             ))}
+                            {api.endpoints.length > 2 && (
+                              <li className="text-xs text-muted-foreground">
+                                +{api.endpoints.length - 2} more endpoints
+                              </li>
+                            )}
                           </ul>
                         </div>
                       ) : (
@@ -551,59 +592,73 @@ const ApisPage = () => {
                     </div>
                   </CardContent>
                   <CardFooter>
-                    <Dialog open={subscribeDialogOpen && selectedApi?.id === api.id} onOpenChange={(open) => {
-                      setSubscribeDialogOpen(open);
-                      if (!open) setSelectedApi(null);
-                    }}>
-                      <DialogTrigger asChild>
-                        <Button 
-                          className="w-full"
-                          onClick={() => {
-                            if (!isAuthenticated) {
-                              toast('Info', {
-                                description: 'Please sign in to subscribe to APIs',
-                              });
-                              navigate('/login');
-                              return;
-                            }
-                            setSelectedApi(api);
-                          }}
-                        >
-                          Subscribe
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <form onSubmit={handleSubscribe}>
-                          <DialogHeader>
-                            <DialogTitle>Subscribe to {selectedApi?.name}</DialogTitle>
-                            <DialogDescription>
-                              Choose a plan to subscribe to this API.
-                            </DialogDescription>
-                          </DialogHeader>
-                          <div className="py-4">
-                            <div className="grid gap-2">
-                              <Label htmlFor="plan">Subscription Plan</Label>
-                              <Select 
-                                value={subscriptionForm.plan} 
-                                onValueChange={(value) => setSubscriptionForm({...subscriptionForm, plan: value})}
-                              >
-                                <SelectTrigger id="plan">
-                                  <SelectValue placeholder="Select plan" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="free">Free (1000 requests/day)</SelectItem>
-                                  <SelectItem value="basic">Basic (5000 requests/day)</SelectItem>
-                                  <SelectItem value="pro">Pro (Unlimited)</SelectItem>
-                                </SelectContent>
-                              </Select>
+                    {isSubscribed(api.id) ? (
+                      <Button 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          testApi(api.id);
+                        }}
+                      >
+                        Test API
+                      </Button>
+                    ) : (
+                      <Dialog open={subscribeDialogOpen && selectedApi?.id === api.id} onOpenChange={(open) => {
+                        setSubscribeDialogOpen(open);
+                        if (!open) setSelectedApi(null);
+                      }}>
+                        <DialogTrigger asChild>
+                          <Button 
+                            className="w-full"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isAuthenticated) {
+                                toast('Info', {
+                                  description: 'Please sign in to subscribe to APIs',
+                                });
+                                navigate('/login');
+                                return;
+                              }
+                              setSelectedApi(api);
+                            }}
+                          >
+                            Subscribe
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent onClick={(e) => e.stopPropagation()}>
+                          <form onSubmit={handleSubscribe}>
+                            <DialogHeader>
+                              <DialogTitle>Subscribe to {selectedApi?.name}</DialogTitle>
+                              <DialogDescription>
+                                Choose a plan to subscribe to this API.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="py-4">
+                              <div className="grid gap-2">
+                                <Label htmlFor="plan">Subscription Plan</Label>
+                                <Select 
+                                  value={subscriptionForm.plan} 
+                                  onValueChange={(value) => setSubscriptionForm({...subscriptionForm, plan: value})}
+                                >
+                                  <SelectTrigger id="plan">
+                                    <SelectValue placeholder="Select plan" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="free">Free (1000 requests/day)</SelectItem>
+                                    <SelectItem value="basic">Basic (5000 requests/day)</SelectItem>
+                                    <SelectItem value="pro">Pro (Unlimited)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             </div>
-                          </div>
-                          <DialogFooter>
-                            <Button type="submit">Subscribe</Button>
-                          </DialogFooter>
-                        </form>
-                      </DialogContent>
-                    </Dialog>
+                            <DialogFooter>
+                              <Button type="submit">Subscribe</Button>
+                            </DialogFooter>
+                          </form>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                   </CardFooter>
                 </Card>
               ))}
@@ -622,34 +677,138 @@ const ApisPage = () => {
         </TabsContent>
 
         <TabsContent value="subscribed" className="mt-6">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Check Subscriptions Page</h3>
-            <p className="text-muted-foreground max-w-md">
-              View and manage your API subscriptions in the dedicated Subscriptions page.
-            </p>
-            <Button className="mt-4" variant="outline" asChild>
-              <a href="/subscriptions">View Subscriptions</a>
-            </Button>
-          </div>
+          {subscriptions.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {subscriptions.map((subscription) => {
+                const api = apis.find(a => a.id === subscription.api_id);
+                if (!api) return null;
+                
+                return (
+                  <Card key={subscription.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleApiClick(api)}>
+                    <CardHeader>
+                      {api.logo && (
+                        <div className="w-12 h-12 mb-2">
+                          <img src={api.logo} alt={`${api.name} logo`} className="w-full h-full object-contain rounded" />
+                        </div>
+                      )}
+                      <CardTitle>{api.name}</CardTitle>
+                      <CardDescription>{api.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">Plan:</span>
+                          <span className="font-medium capitalize">{subscription.plan}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-muted-foreground">API Key:</span>
+                          <span className="font-mono text-xs truncate max-w-[180px]">{subscription.api_key.substring(0, 8)}...</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button 
+                        variant="outline" 
+                        className="w-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          testApi(api.id);
+                        }}
+                      >
+                        Test API
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Package className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Subscriptions Yet</h3>
+              <p className="text-muted-foreground max-w-md">
+                You haven't subscribed to any APIs yet. Browse the API Hub to find APIs to use.
+              </p>
+              <Button className="mt-4" variant="outline" onClick={() => {
+                const tabsList = document.querySelector('[role="tablist"]');
+                if (tabsList) {
+                  const allTabsTrigger = tabsList.querySelector('[data-state="inactive"][value="all"]');
+                  if (allTabsTrigger && 'click' in allTabsTrigger) {
+                    (allTabsTrigger as HTMLElement).click();
+                  }
+                }
+              }}>
+                Browse All APIs
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="my-apis" className="mt-6">
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Package className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Your Published APIs</h3>
-            <p className="text-muted-foreground max-w-md">
-              APIs you have published will appear here.
-            </p>
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="mt-4">
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Create API
-                </Button>
-              </DialogTrigger>
-            </Dialog>
-          </div>
+          {myApis.length > 0 ? (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {myApis.map((api) => (
+                <Card key={api.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleApiClick(api)}>
+                  <CardHeader>
+                    {api.logo && (
+                      <div className="w-12 h-12 mb-2">
+                        <img src={api.logo} alt={`${api.name} logo`} className="w-full h-full object-contain rounded" />
+                      </div>
+                    )}
+                    <CardTitle>{api.name}</CardTitle>
+                    <CardDescription>{api.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Base URL:</span>
+                        <span className="font-mono text-xs truncate max-w-[180px]">{api.baseUrl}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Endpoints:</span>
+                        <span>{api.endpoints?.length || 0} endpoints</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Visibility:</span>
+                        <div className="flex items-center">
+                          <Tag className="h-3 w-3 mr-1" />
+                          <span className="capitalize">{api.visibility}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      className="w-full"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/apis/${api.id}`);
+                      }}
+                    >
+                      Manage API
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Package className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No APIs Published Yet</h3>
+              <p className="text-muted-foreground max-w-md">
+                You haven't published any APIs yet. Create your first API to get started.
+              </p>
+              <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="mt-4">
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Create API
+                  </Button>
+                </DialogTrigger>
+              </Dialog>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

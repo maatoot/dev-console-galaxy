@@ -7,7 +7,7 @@ const GATEWAY_SERVICE_URL = 'http://localhost:8001';
 const TESTING_ROBOT_URL = 'http://localhost:8002';
 
 // Mock storage for APIs and subscriptions when running in Lovable environment
-const isLovableEnvironment = window.location.hostname.includes('lovableproject.com');
+const isLovableEnvironment = window.location.href.includes('lovableproject.com');
 let mockApis: any[] = [];
 let mockSubscriptions: any[] = [];
 
@@ -44,10 +44,12 @@ const testingRobotClient = createClient(TESTING_ROBOT_URL);
 
 // Mock API functions for Lovable environment
 const createMockApi = (apiData: any) => {
+  const userId = localStorage.getItem('userId') || `user-${Date.now()}`;
+  
   const newApi = {
     ...apiData,
     id: `api-${Date.now()}`,
-    provider_id: localStorage.getItem('userId') || 'mock-provider',
+    provider_id: userId,
     created_at: new Date().toISOString(),
     // Initialize with empty endpoints array or with the first endpoint if provided
     endpoints: apiData.endpoints || (apiData.endpoint ? [{ path: apiData.endpoint, description: '' }] : [])
@@ -83,11 +85,26 @@ const getMockApi = (apiId: string) => {
 };
 
 const createMockSubscription = (subscriptionData: any) => {
+  const userId = localStorage.getItem('userId') || `user-${Date.now()}`;
+  
+  // Check if user already has a subscription for this API
+  const existingSubscription = mockSubscriptions.find(
+    sub => sub.api_id === subscriptionData.api_id && sub.user_id === userId
+  );
+  
+  if (existingSubscription) {
+    return Promise.resolve({ data: existingSubscription });
+  }
+  
   const newSubscription = {
     ...subscriptionData,
     id: `sub-${Date.now()}`,
-    user_id: localStorage.getItem('userId') || 'mock-user',
+    user_id: userId,
     created_at: new Date().toISOString(),
+    start_date: new Date().toISOString(),
+    end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+    usage_limit: subscriptionData.plan === 'free' ? 1000 : 
+                subscriptionData.plan === 'basic' ? 5000 : -1, // -1 means unlimited
     api_key: `api-key-${Math.random().toString(36).substring(2, 15)}`
   };
   
@@ -96,7 +113,9 @@ const createMockSubscription = (subscriptionData: any) => {
 };
 
 const listMockSubscriptions = () => {
-  return Promise.resolve({ data: mockSubscriptions });
+  const userId = localStorage.getItem('userId');
+  const userSubscriptions = mockSubscriptions.filter(sub => sub.user_id === userId);
+  return Promise.resolve({ data: userSubscriptions });
 };
 
 // API functions
@@ -142,7 +161,8 @@ export const apiService = {
       : userServiceClient.get(`/subscriptions/${subscriptionId}`),
     getByApiId: (apiId: string) => {
       if (isLovableEnvironment) {
-        const subscription = mockSubscriptions.find(sub => sub.api_id === apiId);
+        const userId = localStorage.getItem('userId');
+        const subscription = mockSubscriptions.find(sub => sub.api_id === apiId && sub.user_id === userId);
         return Promise.resolve({ data: subscription || null });
       }
       return userServiceClient.get(`/subscriptions/api/${apiId}`);
@@ -193,6 +213,21 @@ if (isLovableEnvironment && mockApis.length === 0) {
       visibility: 'public',
       provider_id: 'mock-provider-2',
       authentication: { type: 'bearer' },
+      created_at: new Date().toISOString()
+    },
+    {
+      id: 'api-3',
+      name: 'What Is My IP',
+      description: 'Returns your current IP address and information about it',
+      baseUrl: 'https://api.ipify.org',
+      endpoints: [
+        { path: '/', description: 'Get IP address as plain text' },
+        { path: '?format=json', description: 'Get IP address as JSON' },
+        { path: '?format=jsonp', description: 'Get IP address as JSONP' }
+      ],
+      visibility: 'public',
+      provider_id: 'mock-provider',
+      authentication: { type: 'none' },
       created_at: new Date().toISOString()
     }
   ];

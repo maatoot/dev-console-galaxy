@@ -6,6 +6,7 @@ import { toast } from '@/lib/toast';
 interface User {
   username: string;
   role: 'provider' | 'consumer' | 'admin';
+  id?: string; // Adding id property to fix the build error
 }
 
 interface AuthContextType {
@@ -21,8 +22,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock user database for demo purposes
-const mockUsers: Record<string, { username: string; password: string; role: 'provider' | 'consumer' | 'admin' }> = {};
+// Mock user database for demo purposes - changing to use an object instead of a variable
+const mockUsers: Record<string, { username: string; password: string; role: 'provider' | 'consumer' | 'admin'; id: string }> = {};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -48,13 +49,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // For demo environment, check against our mock database
       if (import.meta.env.DEV || window.location.href.includes('lovableproject.com')) {
+        console.log('Trying to login with mock user:', username);
+        console.log('Available mock users:', Object.keys(mockUsers));
+        
         // Check if user exists and password matches
         if (mockUsers[username] && mockUsers[username].password === password) {
           // Create a simple token (in a real app, this would be a JWT from the server)
           const mockToken = `mock-token-${Date.now()}`;
           const userObj = { 
             username,
-            role: mockUsers[username].role
+            role: mockUsers[username].role,
+            id: mockUsers[username].id
           };
           
           setToken(mockToken);
@@ -62,6 +67,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           localStorage.setItem('token', mockToken);
           localStorage.setItem('user', JSON.stringify(userObj));
+          localStorage.setItem('userId', mockUsers[username].id);
           
           toast('Success', {
             description: 'You have successfully logged in.',
@@ -113,14 +119,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('Username already exists');
         }
         
+        // Generate a mock user ID
+        const userId = `user-${Date.now()}`;
+        
         // Store the new user
         mockUsers[username] = {
           username,
           password,
-          role
+          role,
+          id: userId
         };
         
-        console.log('Registered user in mock database:', username, 'with role:', role);
+        console.log('Registered user in mock database:', username, 'with role:', role, 'and ID:', userId);
         
         toast('Success', {
           description: 'Registration successful. Please log in.',
@@ -155,6 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('userId');
     toast('Logged out', {
       description: 'You have been successfully logged out.',
     });
