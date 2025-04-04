@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:3000'; // Replace with your actual API base URL
@@ -45,6 +44,19 @@ const MOCK_DATA = {
       ],
       visibility: 'public',
       provider_id: 'provider-1',
+      authentication: { type: 'none' },
+      defaultHeaders: { 'Content-Type': 'application/json' }
+    },
+    {
+      id: 'api-3',
+      name: 'Instagram Data API',
+      description: 'Retrieve data from Instagram content',
+      baseUrl: 'http://45.84.197.155:80',
+      endpoints: [
+        { path: '/index', description: 'Get Instagram content data by URL' }
+      ],
+      visibility: 'public',
+      provider_id: 'provider-2',
       authentication: { type: 'none' },
       defaultHeaders: { 'Content-Type': 'application/json' }
     }
@@ -416,6 +428,30 @@ const gateway = {
         headers: response.headers,
       };
     } catch (error) {
+      // Check if we're trying to access the Instagram API
+      if (path.includes('instagram') || path.includes('45.84.197.155')) {
+        try {
+          // Try direct fetch to the Instagram API
+          const instagramUrl = 'http://45.84.197.155:80/index';
+          const directResponse = await axios({
+            method: options.method,
+            url: instagramUrl,
+            params: { url: path.split('?url=')[1] },
+            headers: options.headers,
+            data: options.data
+          });
+          
+          return {
+            data: directResponse.data,
+            status: directResponse.status,
+            statusText: directResponse.statusText,
+            headers: directResponse.headers,
+          };
+        } catch (directError) {
+          console.error('Direct Instagram API call failed:', directError);
+        }
+      }
+      
       // Mock API gateway response for local development
       const mockResponse = {
         success: true,

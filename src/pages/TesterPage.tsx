@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History } from 'lucide-react';
+import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import apiClient from '@/services/apiClient';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,6 +25,13 @@ interface RequestLog {
   path: string;
   status: number | null;
   responseTime: number | null;
+}
+
+interface ExampleAPI {
+  name: string;
+  url: string;
+  method: string;
+  description?: string;
 }
 
 const TesterPage = () => {
@@ -49,6 +57,17 @@ const TesterPage = () => {
   const [isEmbedded, setIsEmbedded] = useState(false);
   const [requestLogs, setRequestLogs] = useState<RequestLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+  const [isResponseExpanded, setIsResponseExpanded] = useState(false);
+  
+  // Example APIs that users can quickly use
+  const exampleAPIs: ExampleAPI[] = [
+    {
+      name: "Instagram API",
+      url: "http://45.84.197.155:80/index?url=https://www.instagram.com/share/reel/_f1wT9MrQ",
+      method: "GET",
+      description: "Fetch Instagram data by URL"
+    }
+  ];
 
   useEffect(() => {
     setIsEmbedded(window.self !== window.top);
@@ -121,21 +140,22 @@ const TesterPage = () => {
   };
 
   const handleSendRequest = async () => {
-    if (!apiKey.trim()) {
+    if (!apiKey.trim() && !testUrl.trim()) {
       toast('Error', {
-        description: 'Please enter an API key.',
+        description: 'Please enter an API key or test URL.',
         variant: 'destructive'
       });
       return;
     }
     
     let finalPath = path.trim();
+    let useDirectTestUrl = false;
     
-    // If test URL is provided, use it instead
+    // If test URL is provided, use it directly
     if (testUrl.trim()) {
       try {
-        const url = new URL(testUrl);
-        finalPath = url.pathname.substring(1) + url.search;
+        new URL(testUrl); // Validate URL format
+        useDirectTestUrl = true;
       } catch (e) {
         toast('Error', {
           description: 'Invalid test URL. Please check the format.',
@@ -143,7 +163,7 @@ const TesterPage = () => {
         });
         return;
       }
-    } else if (!finalPath) {
+    } else if (!finalPath && !useDirectTestUrl) {
       toast('Error', {
         description: 'Please enter a path or test URL.',
         variant: 'destructive'
@@ -160,7 +180,7 @@ const TesterPage = () => {
     const requestLog: RequestLog = {
       timestamp: new Date().toISOString(),
       method,
-      path: finalPath,
+      path: useDirectTestUrl ? testUrl : finalPath,
       status: null,
       responseTime: null
     };
@@ -200,11 +220,36 @@ const TesterPage = () => {
         });
       }
       
-      const response = await apiClient.gateway.proxy(apiKey, finalPath, {
-        method,
-        headers: parsedHeaders,
-        data: parsedBody
-      });
+      let response;
+      
+      if (useDirectTestUrl) {
+        // Direct fetch for external URLs
+        const fetchOptions: RequestInit = {
+          method,
+          headers: parsedHeaders as HeadersInit,
+        };
+        
+        if (['POST', 'PUT', 'PATCH'].includes(method) && parsedBody) {
+          fetchOptions.body = JSON.stringify(parsedBody);
+        }
+        
+        const fetchResponse = await fetch(testUrl, fetchOptions);
+        const responseData = await fetchResponse.json();
+        
+        response = {
+          status: fetchResponse.status,
+          statusText: fetchResponse.statusText,
+          data: responseData,
+          headers: Object.fromEntries([...fetchResponse.headers.entries()])
+        };
+      } else {
+        // Use apiClient for gateway proxy
+        response = await apiClient.gateway.proxy(apiKey, finalPath, {
+          method,
+          headers: parsedHeaders,
+          data: parsedBody
+        });
+      }
       
       const endTime = performance.now();
       const responseTimeMs = Math.round(endTime - startTime);
@@ -282,6 +327,13 @@ const TesterPage = () => {
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
     return date.toLocaleTimeString() + ' ' + date.toLocaleDateString();
+  };
+
+  const handleUseExampleAPI = (example: ExampleAPI) => {
+    setTestUrl(example.url);
+    setMethod(example.method);
+    setPath('');
+    setApiKey('');
   };
 
   return (
@@ -370,6 +422,37 @@ const TesterPage = () => {
         </Card>
       )}
 
+      {/* Example APIs section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Example APIs</CardTitle>
+          <CardDescription>Try these pre-configured API examples</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4">
+            {exampleAPIs.map((example, index) => (
+              <div key={index} className="border rounded-md p-4 flex justify-between items-center">
+                <div>
+                  <h3 className="font-medium">{example.name}</h3>
+                  <p className="text-sm text-muted-foreground">{example.description}</p>
+                  <div className="flex items-center mt-1 text-xs font-mono text-muted-foreground">
+                    <span className="px-1.5 py-0.5 rounded bg-muted mr-2">{example.method}</span>
+                    <span className="truncate">{example.url}</span>
+                  </div>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handleUseExampleAPI(example)}
+                >
+                  Use this API
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -378,7 +461,7 @@ const TesterPage = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
+              <Label htmlFor="api-key">API Key (Optional if using direct Test URL)</Label>
               <Input
                 id="api-key"
                 value={apiKey}
@@ -389,7 +472,7 @@ const TesterPage = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="test-url">Test URL (Optional)</Label>
+              <Label htmlFor="test-url">Test URL</Label>
               <Input
                 id="test-url"
                 value={testUrl}
@@ -398,7 +481,7 @@ const TesterPage = () => {
                 className="font-mono text-xs"
               />
               <p className="text-xs text-muted-foreground">
-                If provided, this URL will be used instead of the path below.
+                If provided, this URL will be called directly.
               </p>
             </div>
             
@@ -419,7 +502,7 @@ const TesterPage = () => {
                 </Select>
               </div>
               <div className="col-span-8">
-                <Label htmlFor="path">Path</Label>
+                <Label htmlFor="path">Path (If using API Gateway)</Label>
                 <Input
                   id="path"
                   value={path}
@@ -539,6 +622,18 @@ const TesterPage = () => {
                   <AlertTriangle className="mr-1 h-4 w-4 text-destructive" />
                 )}
                 Status: {response.status} {response.statusText}
+                
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="ml-auto" 
+                  onClick={() => setIsResponseExpanded(!isResponseExpanded)}
+                >
+                  {isResponseExpanded ? 
+                    <ChevronDown className="h-4 w-4" /> : 
+                    <ChevronRight className="h-4 w-4" />
+                  }
+                </Button>
               </CardDescription>
             )}
           </CardHeader>
@@ -553,32 +648,90 @@ const TesterPage = () => {
                 <p className="text-center">{error}</p>
               </div>
             ) : response ? (
-              <Tabs defaultValue="body">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="body">Body</TabsTrigger>
-                  <TabsTrigger value="headers">Headers</TabsTrigger>
-                </TabsList>
-                <TabsContent value="body">
-                  <div className="relative">
-                    <Button 
-                      variant="ghost" 
-                      size="icon"
-                      className="absolute top-2 right-2"
-                      onClick={() => copyToClipboard(formatJSON(response.data))}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <pre className="bg-card border border-border rounded-md p-4 overflow-auto h-80 text-xs font-mono whitespace-pre-wrap">
-                      {formatJSON(response.data)}
-                    </pre>
+              <div>
+                {/* Status code card - always visible */}
+                <div className={`p-3 mb-4 rounded-md ${
+                  response.status >= 200 && response.status < 300 
+                    ? 'bg-green-50 border border-green-200' 
+                    : 'bg-red-50 border border-red-200'
+                }`}>
+                  <div className="flex items-center">
+                    <span className={`text-sm font-medium ${
+                      response.status >= 200 && response.status < 300 
+                        ? 'text-green-800' 
+                        : 'text-red-800'
+                    }`}>
+                      Status: {response.status} {response.statusText}
+                    </span>
+                    <span className="ml-auto text-sm text-muted-foreground">
+                      {responseTime}ms
+                    </span>
                   </div>
-                </TabsContent>
-                <TabsContent value="headers">
-                  <pre className="bg-card border border-border rounded-md p-4 overflow-auto h-80 text-xs font-mono">
-                    {formatJSON(response.headers)}
-                  </pre>
-                </TabsContent>
-              </Tabs>
+                </div>
+                
+                {/* Expanded response details */}
+                <div className={`overflow-hidden transition-all duration-300 ${
+                  isResponseExpanded ? 'max-h-[800px]' : 'max-h-0'
+                }`}>
+                  <div className="space-y-3 mb-4">
+                    <div>
+                      <h3 className="text-sm font-medium mb-1">Request URL</h3>
+                      <div className="bg-muted p-2 rounded text-xs font-mono break-all">
+                        {testUrl || `Gateway/${path}`}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium mb-1">Request Method</h3>
+                      <div className="bg-muted p-2 rounded text-xs font-mono">
+                        {method}
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-medium mb-1">Response Headers</h3>
+                      <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
+                        {formatJSON(response.headers)}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+                
+                <Tabs defaultValue="body">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="body">Body</TabsTrigger>
+                    <TabsTrigger value="headers">Headers</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="body">
+                    <div className="relative">
+                      <div className="absolute top-2 right-2 flex space-x-1">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => copyToClipboard(formatJSON(response.data))}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        {testUrl && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon"
+                            onClick={() => window.open(testUrl, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <pre className="bg-card border border-border rounded-md p-4 overflow-auto h-80 text-xs font-mono whitespace-pre-wrap">
+                        {formatJSON(response.data)}
+                      </pre>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="headers">
+                    <pre className="bg-card border border-border rounded-md p-4 overflow-auto h-80 text-xs font-mono">
+                      {formatJSON(response.headers)}
+                    </pre>
+                  </TabsContent>
+                </Tabs>
+              </div>
             ) : (
               <div className="h-80 flex flex-col items-center justify-center text-muted-foreground">
                 <Send className="h-12 w-12 mb-4" />
