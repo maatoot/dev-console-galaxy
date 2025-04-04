@@ -56,8 +56,8 @@
   }
   
   /* Cursor styling for links and clickable elements */
-  a, button, [role="button"], .cursor-pointer {
-    @apply cursor-pointer;
+  a, button, [role="button"] {
+    cursor: pointer;
   }
 }
 
@@ -114,7 +114,8 @@
 
 /* Card hover effects */
 .card-hover {
-  @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.01] hover:border-primary/30 cursor-pointer;
+  @apply transition-all duration-200 hover:shadow-lg hover:scale-[1.01] hover:border-primary/30;
+  cursor: pointer;
 }
 
 /* Price tag styling */
