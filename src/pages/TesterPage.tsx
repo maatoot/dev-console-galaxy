@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
 import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History } from 'lucide-react';
-import apiService from '@/services/apiClient';
+import apiClient from '@/services/apiClient';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
 
