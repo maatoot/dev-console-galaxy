@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'react-router-dom';
-import { Copy, ExternalLink, Key, Package, RefreshCw } from 'lucide-react';
+import { Copy, ExternalLink, Key, Package, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import apiService from '@/services/apiClient';
 
 interface API {
@@ -31,6 +31,7 @@ const SubscriptionsPage = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [apis, setApis] = useState<Record<string, API>>({});
   const [loading, setLoading] = useState(true);
+  const [visibleApiKeys, setVisibleApiKeys] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchSubscriptions();
@@ -69,6 +70,17 @@ const SubscriptionsPage = () => {
     toast('Copied', {
       description: 'API key copied to clipboard.',
     });
+  };
+
+  const toggleApiKeyVisibility = (subscriptionId: string) => {
+    setVisibleApiKeys(prev => ({
+      ...prev,
+      [subscriptionId]: !prev[subscriptionId]
+    }));
+  };
+
+  const formatApiKey = (subscriptionId: string, key: string) => {
+    return visibleApiKeys[subscriptionId] ? key : key.replace(/./g, '•');
   };
 
   const getStatusBadge = (endDate: string) => {
@@ -120,7 +132,7 @@ const SubscriptionsPage = () => {
                 if (!isActive) return null;
                 
                 return (
-                  <Card key={subscription.id}>
+                  <Card key={subscription.id} className="card-hover">
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-xl">
@@ -156,8 +168,16 @@ const SubscriptionsPage = () => {
                         <div className="text-sm font-medium">API Key:</div>
                         <div className="flex">
                           <code className="flex-1 p-2 bg-muted rounded-l-md text-xs font-mono truncate border border-r-0 border-border">
-                            {subscription.api_key}
+                            {formatApiKey(subscription.id, subscription.api_key)}
                           </code>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="rounded-none border-x-0"
+                            onClick={() => toggleApiKeyVisibility(subscription.id)}
+                          >
+                            {visibleApiKeys[subscription.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
                           <Button 
                             variant="secondary" 
                             size="sm"

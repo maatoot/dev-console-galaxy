@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 import apiService from '@/services/apiClient';
-import { Copy, CheckCircle, PlusCircle, ExternalLink, Edit, Trash, FileTerminal, BarChart } from 'lucide-react';
+import { Copy, CheckCircle, PlusCircle, ExternalLink, Edit, Trash, FileTerminal, BarChart, Eye, EyeOff } from 'lucide-react';
 
 interface API {
   id: string;
@@ -48,6 +47,7 @@ const ApiDetailsPage = () => {
   const [isOwner, setIsOwner] = useState(false);
   const [newEndpoint, setNewEndpoint] = useState({ path: '', description: '' });
   const [activeTab, setActiveTab] = useState('overview');
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     if (!apiId) return;
@@ -55,16 +55,13 @@ const ApiDetailsPage = () => {
     const fetchApiDetails = async () => {
       try {
         setLoading(true);
-        // Fetch API details
         const apiResponse = await apiService.apis.get(apiId);
         setApi(apiResponse.data);
         
-        // Check if user is owner
         if (user && apiResponse.data.provider_id === user.id) {
           setIsOwner(true);
         }
         
-        // Check if user is subscribed
         if (user) {
           const subscriptionsResponse = await apiService.subscriptions.list();
           const subscriptions = subscriptionsResponse.data || [];
@@ -95,9 +92,9 @@ const ApiDetailsPage = () => {
       
       const newSubscription = await apiService.subscriptions.create({
         api_id: api.id,
-        plan: 'basic', // Default plan
+        plan: 'basic',
         start_date: new Date().toISOString(),
-        end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+        end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         usage_limit: 1000
       });
       
@@ -118,7 +115,6 @@ const ApiDetailsPage = () => {
       
       await apiService.apis.addEndpoint(api.id, newEndpoint);
       
-      // Refresh API data
       const apiResponse = await apiService.apis.get(api.id);
       setApi(apiResponse.data);
       
@@ -138,6 +134,14 @@ const ApiDetailsPage = () => {
     toast('Copied', {
       description: 'API key copied to clipboard.',
     });
+  };
+
+  const toggleApiKeyVisibility = () => {
+    setShowApiKey(!showApiKey);
+  };
+
+  const formatApiKey = (key: string) => {
+    return showApiKey ? key : key.replace(/./g, '•');
   };
 
   if (loading) {
@@ -237,7 +241,7 @@ const ApiDetailsPage = () => {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {api.authentication?.type === 'apiKey' ? (
+              {api?.authentication?.type === 'apiKey' ? (
                 <div className="space-y-4">
                   <p>
                     This API uses an API key for authentication. You need to include your API key in the
@@ -252,7 +256,32 @@ const ApiDetailsPage = () => {
                     )}
                   </div>
                   
-                  {!subscription && (
+                  {subscription ? (
+                    <div className="bg-card p-4 rounded-md border border-border">
+                      <div className="text-sm font-medium mb-2">Your API Key:</div>
+                      <div className="flex">
+                        <code className="flex-1 p-2 bg-muted rounded-l-md text-xs font-mono truncate border border-r-0 border-border">
+                          {formatApiKey(subscription.api_key)}
+                        </code>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="rounded-none border-x-0"
+                          onClick={toggleApiKeyVisibility}
+                        >
+                          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          size="sm"
+                          className="rounded-l-none"
+                          onClick={() => copyApiKey(subscription.api_key)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
                     <div className="flex justify-end">
                       <Button onClick={handleSubscribe}>
                         Subscribe to Get API Key
@@ -260,7 +289,7 @@ const ApiDetailsPage = () => {
                     </div>
                   )}
                 </div>
-              ) : api.authentication?.type === 'bearer' ? (
+              ) : api?.authentication?.type === 'bearer' ? (
                 <div className="space-y-4">
                   <p>
                     This API uses Bearer token authentication. Include your token in the Authorization header.
@@ -270,7 +299,32 @@ const ApiDetailsPage = () => {
                     <pre>Authorization: Bearer YOUR_TOKEN</pre>
                   </div>
                   
-                  {!subscription && (
+                  {subscription ? (
+                    <div className="bg-card p-4 rounded-md border border-border">
+                      <div className="text-sm font-medium mb-2">Your API Token:</div>
+                      <div className="flex">
+                        <code className="flex-1 p-2 bg-muted rounded-l-md text-xs font-mono truncate border border-r-0 border-border">
+                          {formatApiKey(subscription.api_key)}
+                        </code>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="rounded-none border-x-0"
+                          onClick={toggleApiKeyVisibility}
+                        >
+                          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                        <Button 
+                          variant="secondary" 
+                          size="sm"
+                          className="rounded-l-none"
+                          onClick={() => copyApiKey(subscription.api_key)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
                     <div className="flex justify-end">
                       <Button onClick={handleSubscribe}>
                         Subscribe to Get API Token
@@ -349,8 +403,16 @@ const ApiDetailsPage = () => {
                   <div className="text-sm font-medium">API Key:</div>
                   <div className="flex">
                     <code className="flex-1 p-2 bg-muted rounded-l-md text-xs font-mono truncate border border-r-0 border-border">
-                      {subscription.api_key}
+                      {formatApiKey(subscription.api_key)}
                     </code>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="rounded-none border-x-0"
+                      onClick={toggleApiKeyVisibility}
+                    >
+                      {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
                     <Button 
                       variant="secondary" 
                       size="sm"

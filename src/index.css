@@ -160,3 +160,25 @@
 .plan-card-pro {
   @apply hover:border-purple-500/50 hover:bg-purple-500/5;
 }
+
+/* Key display styles */
+.key-container {
+  @apply relative overflow-hidden;
+}
+
+.key-segment {
+  @apply inline-block w-6 h-6 mx-0.5 text-center rounded;
+  transition: all 0.3s ease;
+}
+
+.key-segment-primary {
+  @apply bg-primary/10;
+}
+
+.key-segment-secondary {
+  @apply bg-secondary/10;
+}
+
+.key-segment-accent {
+  @apply bg-accent/10;
+}
