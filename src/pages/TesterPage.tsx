@@ -201,7 +201,7 @@ const TesterPage = () => {
         });
       }
       
-      const response = await apiService.gateway.proxy(apiKey, finalPath, {
+      const response = await apiClient.gateway.proxy(apiKey, finalPath, {
         method,
         headers: parsedHeaders,
         data: parsedBody
