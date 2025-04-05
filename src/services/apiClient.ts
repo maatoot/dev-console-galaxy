@@ -472,11 +472,11 @@ const gateway = {
           .from('subscriptions')
           .select('id')
           .eq('api_key', apiKey)
-          .limit(1);
+          .single();
           
-        if (subscriptionData && subscriptionData.length > 0) {
+        if (subscriptionData) {
           await logApiRequest({
-            subscriptionId: subscriptionData[0].id,
+            subscriptionId: subscriptionData.id,
             endpointPath: new URL(targetUrl).pathname,
             statusCode: response.status,
             responseTime,
