@@ -9,7 +9,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
-import { Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { KeyDisplay } from '@/components/ui/key-display';
+import { 
+  Send, Clock, Check, AlertTriangle, Copy, Plus, Trash, Eye, History, 
+  ChevronDown, ChevronRight, ExternalLink, Save, Download, Upload,
+  Server, Link, Settings, Play, Code
+} from 'lucide-react';
 import apiClient from '@/services/apiClient';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +27,7 @@ interface HeaderKeyValue {
 interface RequestLog {
   timestamp: string;
   method: string;
+  baseUrl: string;
   path: string;
   status: number | null;
   responseTime: number | null;
@@ -29,9 +35,28 @@ interface RequestLog {
 
 interface ExampleAPI {
   name: string;
-  url: string;
-  method: string;
+  baseUrl: string;
+  endpoints: Array<{
+    path: string;
+    method: string;
+    description?: string;
+    params?: Record<string, string>;
+    headers?: Record<string, string>;
+  }>;
   description?: string;
+  documentation?: string;
+}
+
+interface SavedRequest {
+  id: string;
+  name: string;
+  baseUrl: string;
+  path: string;
+  method: string;
+  headers: HeaderKeyValue[];
+  params: HeaderKeyValue[];
+  body: string;
+  createdAt: string;
 }
 
 const TesterPage = () => {
@@ -40,16 +65,20 @@ const TesterPage = () => {
   const [searchParams] = useSearchParams();
   const initialApiKey = searchParams.get('apiKey') || '';
   const initialPath = searchParams.get('path') || '';
-  const initialTestUrl = searchParams.get('testUrl') || '';
+  const initialBaseUrl = searchParams.get('baseUrl') || '';
   
+  // Main request state
   const [apiKey, setApiKey] = useState(initialApiKey);
+  const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [path, setPath] = useState(initialPath);
-  const [testUrl, setTestUrl] = useState(initialTestUrl);
   const [method, setMethod] = useState('GET');
   const [headersFormat, setHeadersFormat] = useState<'json' | 'keyValue'>('keyValue');
   const [headers, setHeaders] = useState('{}');
   const [headersList, setHeadersList] = useState<HeaderKeyValue[]>([{ key: 'Content-Type', value: 'application/json' }]);
+  const [paramsList, setParamsList] = useState<HeaderKeyValue[]>([{ key: '', value: '' }]);
   const [body, setBody] = useState('');
+  
+  // Response state
   const [response, setResponse] = useState<any>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,14 +87,24 @@ const TesterPage = () => {
   const [requestLogs, setRequestLogs] = useState<RequestLog[]>([]);
   const [showLogs, setShowLogs] = useState(false);
   const [isResponseExpanded, setIsResponseExpanded] = useState(false);
+  const [savedRequests, setSavedRequests] = useState<SavedRequest[]>([]);
+  const [currentRequestName, setCurrentRequestName] = useState('');
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   
   // Example APIs that users can quickly use
   const exampleAPIs: ExampleAPI[] = [
     {
       name: "Instagram API",
-      url: "http://45.84.197.155:80/index?url=https://www.instagram.com/share/reel/_f1wT9MrQ",
-      method: "GET",
-      description: "Fetch Instagram data by URL"
+      baseUrl: "http://45.84.197.155:80",
+      endpoints: [
+        {
+          path: "/index",
+          method: "GET", 
+          description: "Fetch Instagram data by URL",
+          params: { url: "https://www.instagram.com/share/reel/_f1wT9MrQ" }
+        }
+      ],
+      description: "Extract data from Instagram posts, reels and stories"
     }
   ];
 
@@ -82,24 +121,34 @@ const TesterPage = () => {
       }
     }
     
+    // Load saved requests
+    const storedRequests = localStorage.getItem('api_tester_saved_requests');
+    if (storedRequests) {
+      try {
+        setSavedRequests(JSON.parse(storedRequests));
+      } catch (e) {
+        console.error('Failed to parse stored saved requests:', e);
+      }
+    }
+    
     if (initialApiKey) {
       // If we have an API key but no path, set a default
       if (!initialPath) {
         setPath('');
       }
       
-      // If we have a test URL, use it
-      if (initialTestUrl) {
-        setTestUrl(initialTestUrl);
+      // If we have a base URL, use it
+      if (initialBaseUrl) {
+        setBaseUrl(initialBaseUrl);
       }
     }
 
     if (!isAuthenticated && !window.location.href.includes('?apiKey=') && !isEmbedded) {
       toast('Info', {
-        description: 'Please sign in to access all API tester features',
+        description: 'Sign in to save your requests and access all API tester features.',
       });
     }
-  }, [initialApiKey, initialPath, initialTestUrl, isAuthenticated]);
+  }, [initialApiKey, initialPath, initialBaseUrl, isAuthenticated]);
 
   useEffect(() => {
     if (headersFormat === 'json') {
@@ -132,6 +181,53 @@ const TesterPage = () => {
     newHeaders[index][field] = value;
     setHeadersList(newHeaders);
   };
+  
+  const handleAddParam = () => {
+    setParamsList([...paramsList, { key: '', value: '' }]);
+  };
+
+  const handleRemoveParam = (index: number) => {
+    const newParams = [...paramsList];
+    newParams.splice(index, 1);
+    setParamsList(newParams);
+  };
+
+  const handleParamChange = (index: number, field: 'key' | 'value', value: string) => {
+    const newParams = [...paramsList];
+    newParams[index][field] = value;
+    setParamsList(newParams);
+  };
+  
+  const buildUrl = () => {
+    if (!baseUrl) return '';
+    
+    let finalUrl = baseUrl.trim();
+    
+    // Add the path
+    if (path) {
+      // Make sure the base URL ends with a slash and the path doesn't start with one
+      if (!finalUrl.endsWith('/') && !path.startsWith('/')) {
+        finalUrl += '/';
+      }
+      // If both baseUrl ends with / and path starts with /, remove one
+      if (finalUrl.endsWith('/') && path.startsWith('/')) {
+        finalUrl += path.substring(1);
+      } else {
+        finalUrl += path;
+      }
+    }
+    
+    // Add query parameters
+    const queryParams = paramsList.filter(p => p.key.trim());
+    if (queryParams.length > 0) {
+      finalUrl += (finalUrl.includes('?') ? '&' : '?') + 
+        queryParams
+          .map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`)
+          .join('&');
+    }
+    
+    return finalUrl;
+  };
 
   const saveRequestLog = (log: RequestLog) => {
     const updatedLogs = [log, ...requestLogs.slice(0, 19)]; // Keep only last 20 logs
@@ -140,32 +236,9 @@ const TesterPage = () => {
   };
 
   const handleSendRequest = async () => {
-    if (!apiKey.trim() && !testUrl.trim()) {
+    if (!baseUrl.trim()) {
       toast('Error', {
-        description: 'Please enter an API key or test URL.',
-        variant: 'destructive'
-      });
-      return;
-    }
-    
-    let finalPath = path.trim();
-    let useDirectTestUrl = false;
-    
-    // If test URL is provided, use it directly
-    if (testUrl.trim()) {
-      try {
-        new URL(testUrl); // Validate URL format
-        useDirectTestUrl = true;
-      } catch (e) {
-        toast('Error', {
-          description: 'Invalid test URL. Please check the format.',
-          variant: 'destructive'
-        });
-        return;
-      }
-    } else if (!finalPath && !useDirectTestUrl) {
-      toast('Error', {
-        description: 'Please enter a path or test URL.',
+        description: 'Please enter a base URL.',
         variant: 'destructive'
       });
       return;
@@ -177,10 +250,13 @@ const TesterPage = () => {
     setResponseTime(null);
     
     const startTime = performance.now();
+    const finalUrl = buildUrl();
+    
     const requestLog: RequestLog = {
       timestamp: new Date().toISOString(),
       method,
-      path: useDirectTestUrl ? testUrl : finalPath,
+      baseUrl,
+      path,
       status: null,
       responseTime: null
     };
@@ -222,8 +298,15 @@ const TesterPage = () => {
       
       let response;
       
-      if (useDirectTestUrl) {
-        // Direct fetch for external URLs
+      if (apiKey) {
+        // Use API Gateway with the provided API key
+        response = await apiClient.gateway.proxy(apiKey, finalUrl, {
+          method,
+          headers: parsedHeaders,
+          data: parsedBody
+        });
+      } else {
+        // Direct fetch 
         const fetchOptions: RequestInit = {
           method,
           headers: parsedHeaders as HeadersInit,
@@ -233,7 +316,7 @@ const TesterPage = () => {
           fetchOptions.body = JSON.stringify(parsedBody);
         }
         
-        const fetchResponse = await fetch(testUrl, fetchOptions);
+        const fetchResponse = await fetch(finalUrl, fetchOptions);
         const responseData = await fetchResponse.json();
         
         response = {
@@ -242,13 +325,6 @@ const TesterPage = () => {
           data: responseData,
           headers: Object.fromEntries([...fetchResponse.headers.entries()])
         };
-      } else {
-        // Use apiClient for gateway proxy
-        response = await apiClient.gateway.proxy(apiKey, finalPath, {
-          method,
-          headers: parsedHeaders,
-          data: parsedBody
-        });
       }
       
       const endTime = performance.now();
@@ -320,7 +396,7 @@ const TesterPage = () => {
     const params = new URLSearchParams();
     if (apiKey) params.append('apiKey', apiKey);
     if (path) params.append('path', path);
-    if (testUrl) params.append('testUrl', testUrl);
+    if (baseUrl) params.append('baseUrl', baseUrl);
     window.open(`/tester?${params.toString()}`, '_blank');
   };
 
@@ -329,10 +405,84 @@ const TesterPage = () => {
     return date.toLocaleTimeString() + ' ' + date.toLocaleDateString();
   };
 
+  const handleSaveRequest = () => {
+    if (!currentRequestName.trim()) {
+      toast('Error', {
+        description: 'Please enter a name for this request.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    const newRequest: SavedRequest = {
+      id: Date.now().toString(),
+      name: currentRequestName,
+      baseUrl,
+      path,
+      method,
+      headers: headersList,
+      params: paramsList,
+      body,
+      createdAt: new Date().toISOString()
+    };
+    
+    const updatedRequests = [...savedRequests, newRequest];
+    setSavedRequests(updatedRequests);
+    localStorage.setItem('api_tester_saved_requests', JSON.stringify(updatedRequests));
+    
+    setSaveDialogOpen(false);
+    setCurrentRequestName('');
+    
+    toast('Success', {
+      description: 'Request saved successfully.',
+    });
+  };
+
+  const handleLoadRequest = (request: SavedRequest) => {
+    setBaseUrl(request.baseUrl);
+    setPath(request.path);
+    setMethod(request.method);
+    setHeadersList(request.headers);
+    setParamsList(request.params || [{ key: '', value: '' }]);
+    setBody(request.body);
+    
+    toast('Success', {
+      description: `Loaded request: ${request.name}`,
+    });
+  };
+
+  const handleDeleteRequest = (id: string) => {
+    const updatedRequests = savedRequests.filter(req => req.id !== id);
+    setSavedRequests(updatedRequests);
+    localStorage.setItem('api_tester_saved_requests', JSON.stringify(updatedRequests));
+    
+    toast('Success', {
+      description: 'Request deleted.',
+    });
+  };
+
   const handleUseExampleAPI = (example: ExampleAPI) => {
-    setTestUrl(example.url);
-    setMethod(example.method);
-    setPath('');
+    setBaseUrl(example.baseUrl);
+    
+    if (example.endpoints && example.endpoints.length > 0) {
+      const endpoint = example.endpoints[0];
+      setMethod(endpoint.method);
+      setPath(endpoint.path);
+      
+      // Set endpoint parameters if any
+      if (endpoint.params) {
+        const params = Object.entries(endpoint.params).map(([key, value]) => ({ key, value }));
+        setParamsList(params.length > 0 ? params : [{ key: '', value: '' }]);
+      }
+      
+      // Set endpoint headers if any
+      if (endpoint.headers) {
+        const headers = Object.entries(endpoint.headers).map(([key, value]) => ({ key, value }));
+        setHeadersList(headers.length > 0 ? headers : [{ key: 'Content-Type', value: 'application/json' }]);
+      }
+    }
+    
+    // Clear API key when using examples
     setApiKey('');
   };
 
@@ -342,7 +492,7 @@ const TesterPage = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">API Tester</h1>
           <p className="text-muted-foreground mt-2">
-            Test your API endpoints with the Gateway service.
+            Test your API endpoints and analyze responses with precision.
           </p>
         </div>
         <div className="flex space-x-2">
@@ -376,7 +526,7 @@ const TesterPage = () => {
                   <tr className="border-b">
                     <th className="text-left py-2 font-medium">Time</th>
                     <th className="text-left py-2 font-medium">Method</th>
-                    <th className="text-left py-2 font-medium">Path</th>
+                    <th className="text-left py-2 font-medium">URL</th>
                     <th className="text-left py-2 font-medium">Status</th>
                     <th className="text-left py-2 font-medium">Response Time</th>
                     <th className="text-left py-2 font-medium">Actions</th>
@@ -387,7 +537,9 @@ const TesterPage = () => {
                     <tr key={index} className="border-b hover:bg-muted/50 cursor-pointer">
                       <td className="py-2">{formatDate(log.timestamp)}</td>
                       <td className="py-2">{log.method}</td>
-                      <td className="py-2 max-w-[200px] truncate">{log.path}</td>
+                      <td className="py-2 max-w-[200px] truncate">
+                        {log.baseUrl}{log.path ? `/${log.path}` : ''}
+                      </td>
                       <td className="py-2">
                         {log.status ? (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
@@ -406,8 +558,8 @@ const TesterPage = () => {
                           size="sm"
                           onClick={() => {
                             setMethod(log.method);
+                            setBaseUrl(log.baseUrl);
                             setPath(log.path);
-                            setTestUrl('');
                           }}
                         >
                           Reuse
@@ -436,8 +588,12 @@ const TesterPage = () => {
                   <h3 className="font-medium">{example.name}</h3>
                   <p className="text-sm text-muted-foreground">{example.description}</p>
                   <div className="flex items-center mt-1 text-xs font-mono text-muted-foreground">
-                    <span className="px-1.5 py-0.5 rounded bg-muted mr-2">{example.method}</span>
-                    <span className="truncate">{example.url}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-muted mr-2">
+                      {example.endpoints[0]?.method || 'GET'}
+                    </span>
+                    <span className="truncate">
+                      {example.baseUrl}{example.endpoints[0]?.path || ''}
+                    </span>
                   </div>
                 </div>
                 <Button 
@@ -454,154 +610,254 @@ const TesterPage = () => {
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Request</CardTitle>
-            <CardDescription>Configure your API request</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key (Optional if using direct Test URL)</Label>
-              <Input
-                id="api-key"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="550e8400-e29b-41d4-a716-446655440000"
-                className="font-mono text-xs"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="test-url">Test URL</Label>
-              <Input
-                id="test-url"
-                value={testUrl}
-                onChange={(e) => setTestUrl(e.target.value)}
-                placeholder="https://api.example.com/endpoint?param=value"
-                className="font-mono text-xs"
-              />
-              <p className="text-xs text-muted-foreground">
-                If provided, this URL will be called directly.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-4">
-                <Label htmlFor="method">Method</Label>
-                <Select value={method} onValueChange={setMethod}>
-                  <SelectTrigger id="method">
-                    <SelectValue placeholder="Method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="GET">GET</SelectItem>
-                    <SelectItem value="POST">POST</SelectItem>
-                    <SelectItem value="PUT">PUT</SelectItem>
-                    <SelectItem value="DELETE">DELETE</SelectItem>
-                    <SelectItem value="PATCH">PATCH</SelectItem>
-                  </SelectContent>
-                </Select>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Request</CardTitle>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSaveDialogOpen(true)}
+                    disabled={!baseUrl}
+                  >
+                    <Save className="h-4 w-4 mr-1" /> Save
+                  </Button>
+                </div>
               </div>
-              <div className="col-span-8">
-                <Label htmlFor="path">Path (If using API Gateway)</Label>
-                <Input
-                  id="path"
-                  value={path}
-                  onChange={(e) => setPath(e.target.value)}
-                  placeholder="test"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label htmlFor="headers">Headers</Label>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm">JSON</span>
-                  <Switch 
-                    checked={headersFormat === 'json'} 
-                    onCheckedChange={(checked) => setHeadersFormat(checked ? 'json' : 'keyValue')} 
+              <CardDescription>Configure your API request</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="baseUrl">Base URL</Label>
+                <div className="flex">
+                  <div className="w-[80px] flex-shrink-0">
+                    <Select value={method} onValueChange={setMethod}>
+                      <SelectTrigger id="method" className="rounded-r-none">
+                        <SelectValue placeholder="Method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                        <SelectItem value="PUT">PUT</SelectItem>
+                        <SelectItem value="DELETE">DELETE</SelectItem>
+                        <SelectItem value="PATCH">PATCH</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Input
+                    id="baseUrl"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://api.example.com"
+                    className="flex-grow font-mono text-xs rounded-l-none"
                   />
                 </div>
               </div>
               
-              {headersFormat === 'json' ? (
-                <Textarea
-                  id="headers"
-                  value={headers}
-                  onChange={(e) => setHeaders(e.target.value)}
-                  placeholder='{"Content-Type": "application/json"}'
-                  className="font-mono text-xs h-24"
+              <div className="space-y-2">
+                <Label htmlFor="path">Path</Label>
+                <div className="flex items-center">
+                  <div className="flex-shrink-0 text-muted-foreground pr-2 font-mono">
+                    {baseUrl ? `${baseUrl}${!baseUrl.endsWith('/') && !path.startsWith('/') ? '/' : ''}` : ''}
+                  </div>
+                  <Input
+                    id="path"
+                    value={path}
+                    onChange={(e) => setPath(e.target.value)}
+                    placeholder="v1/users"
+                    className="flex-grow font-mono text-xs"
+                  />
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="api-key">API Key (Optional)</Label>
+                <Input
+                  id="api-key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="550e8400-e29b-41d4-a716-446655440000"
+                  className="font-mono text-xs"
                 />
-              ) : (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {headersList.map((header, index) => (
+                {apiKey && <KeyDisplay apiKey={apiKey} className="mt-2" />}
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label>Query Parameters</Label>
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={handleAddParam}
+                    className="h-7 py-1 px-2"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Add
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {paramsList.map((param, index) => (
                     <div key={index} className="flex items-center space-x-2">
                       <Input
-                        placeholder="Header"
-                        value={header.key}
-                        onChange={(e) => handleHeaderChange(index, 'key', e.target.value)}
+                        placeholder="Parameter"
+                        value={param.key}
+                        onChange={(e) => handleParamChange(index, 'key', e.target.value)}
                         className="flex-1 font-mono text-xs"
                       />
                       <Input
                         placeholder="Value"
-                        value={header.value}
-                        onChange={(e) => handleHeaderChange(index, 'value', e.target.value)}
+                        value={param.value}
+                        onChange={(e) => handleParamChange(index, 'value', e.target.value)}
                         className="flex-1 font-mono text-xs"
                       />
                       <Button 
                         type="button" 
                         variant="ghost" 
                         size="icon" 
-                        onClick={() => handleRemoveHeader(index)}
+                        onClick={() => handleRemoveParam(index)}
                       >
                         <Trash className="h-4 w-4" />
                       </Button>
                     </div>
                   ))}
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={handleAddHeader} 
-                    className="mt-2"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Header
-                  </Button>
                 </div>
-              )}
-            </div>
-            
-            {['POST', 'PUT', 'PATCH'].includes(method) && (
-              <div className="space-y-2">
-                <Label htmlFor="body">Request Body (JSON)</Label>
-                <Textarea
-                  id="body"
-                  value={body}
-                  onChange={(e) => setBody(e.target.value)}
-                  placeholder='{"name": "example"}'
-                  className="font-mono text-xs h-40"
-                />
               </div>
-            )}
-          </CardContent>
-          <CardFooter>
-            <Button onClick={handleSendRequest} disabled={loading} className="w-full">
-              {loading ? (
-                <div className="flex items-center">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Sending...
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="headers">Headers</Label>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm">JSON</span>
+                    <Switch 
+                      checked={headersFormat === 'json'} 
+                      onCheckedChange={(checked) => setHeadersFormat(checked ? 'json' : 'keyValue')} 
+                    />
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <Send className="mr-2 h-4 w-4" />
-                  Send Request
-                </>
+                
+                {headersFormat === 'json' ? (
+                  <Textarea
+                    id="headers"
+                    value={headers}
+                    onChange={(e) => setHeaders(e.target.value)}
+                    placeholder='{"Content-Type": "application/json"}'
+                    className="font-mono text-xs h-24"
+                  />
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {headersList.map((header, index) => (
+                      <div key={index} className="flex items-center space-x-2">
+                        <Input
+                          placeholder="Header"
+                          value={header.key}
+                          onChange={(e) => handleHeaderChange(index, 'key', e.target.value)}
+                          className="flex-1 font-mono text-xs"
+                        />
+                        <Input
+                          placeholder="Value"
+                          value={header.value}
+                          onChange={(e) => handleHeaderChange(index, 'value', e.target.value)}
+                          className="flex-1 font-mono text-xs"
+                        />
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => handleRemoveHeader(index)}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleAddHeader} 
+                      className="mt-2"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Header
+                    </Button>
+                  </div>
+                )}
+              </div>
+              
+              {['POST', 'PUT', 'PATCH'].includes(method) && (
+                <div className="space-y-2">
+                  <Label htmlFor="body">Request Body (JSON)</Label>
+                  <Textarea
+                    id="body"
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder='{"name": "example"}'
+                    className="font-mono text-xs h-40"
+                  />
+                </div>
               )}
-            </Button>
-          </CardFooter>
-        </Card>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={handleSendRequest} disabled={loading} className="w-full">
+                {loading ? (
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Sending...
+                  </div>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Execute Request
+                  </>
+                )}
+              </Button>
+            </CardFooter>
+          </Card>
+          
+          {savedRequests.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Saved Requests</CardTitle>
+                <CardDescription>Reuse your frequently used API requests</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {savedRequests.map((req) => (
+                    <div key={req.id} className="border rounded-md p-3 flex items-center justify-between">
+                      <div>
+                        <h3 className="font-medium text-sm">{req.name}</h3>
+                        <div className="flex items-center mt-1">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-muted mr-2">{req.method}</span>
+                          <span className="text-xs font-mono truncate max-w-[180px]">
+                            {req.baseUrl}{req.path ? `/${req.path}` : ''}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex space-x-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleLoadRequest(req)}
+                        >
+                          <Upload className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => handleDeleteRequest(req.id)}
+                        >
+                          <Trash className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         <Card>
           <CardHeader>
@@ -669,23 +925,60 @@ const TesterPage = () => {
                   </div>
                 </div>
                 
+                {/* Request Summary */}
+                <div className="mb-4 bg-muted/50 rounded-md p-3 border border-border">
+                  <h3 className="text-sm font-medium mb-2">Request URL</h3>
+                  <div className="flex items-center">
+                    <code className="bg-muted p-2 rounded text-xs font-mono break-all flex-grow">
+                      {buildUrl()}
+                    </code>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-2"
+                      onClick={() => copyToClipboard(buildUrl())}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                
                 {/* Expanded response details */}
                 <div className={`overflow-hidden transition-all duration-300 ${
                   isResponseExpanded ? 'max-h-[800px]' : 'max-h-0'
                 }`}>
                   <div className="space-y-3 mb-4">
                     <div>
-                      <h3 className="text-sm font-medium mb-1">Request URL</h3>
-                      <div className="bg-muted p-2 rounded text-xs font-mono break-all">
-                        {testUrl || `Gateway/${path}`}
-                      </div>
-                    </div>
-                    <div>
                       <h3 className="text-sm font-medium mb-1">Request Method</h3>
                       <div className="bg-muted p-2 rounded text-xs font-mono">
                         {method}
                       </div>
                     </div>
+                    
+                    {headersList.length > 0 && headersList[0].key && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-1">Request Headers</h3>
+                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
+                          {formatJSON(headersFormat === 'json' 
+                            ? JSON.parse(headers || '{}') 
+                            : headersList.reduce((acc, h) => {
+                                if (h.key) acc[h.key] = h.value;
+                                return acc;
+                              }, {})
+                          )}
+                        </pre>
+                      </div>
+                    )}
+                    
+                    {body && ['POST', 'PUT', 'PATCH'].includes(method) && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-1">Request Body</h3>
+                        <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
+                          {formatJSON(JSON.parse(body || '{}'))}
+                        </pre>
+                      </div>
+                    )}
+                    
                     <div>
                       <h3 className="text-sm font-medium mb-1">Response Headers</h3>
                       <pre className="bg-muted p-2 rounded text-xs font-mono overflow-auto max-h-32">
@@ -699,6 +992,7 @@ const TesterPage = () => {
                   <TabsList className="mb-4">
                     <TabsTrigger value="body">Body</TabsTrigger>
                     <TabsTrigger value="headers">Headers</TabsTrigger>
+                    <TabsTrigger value="raw">Raw</TabsTrigger>
                   </TabsList>
                   <TabsContent value="body">
                     <div className="relative">
@@ -710,11 +1004,12 @@ const TesterPage = () => {
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
-                        {testUrl && (
+                        {/* Button to open in new tab if it's a URL */}
+                        {baseUrl && (
                           <Button 
                             variant="ghost" 
                             size="icon"
-                            onClick={() => window.open(testUrl, '_blank')}
+                            onClick={() => window.open(buildUrl(), '_blank')}
                           >
                             <ExternalLink className="h-4 w-4" />
                           </Button>
@@ -730,17 +1025,55 @@ const TesterPage = () => {
                       {formatJSON(response.headers)}
                     </pre>
                   </TabsContent>
+                  <TabsContent value="raw">
+                    <pre className="bg-card border border-border rounded-md p-4 overflow-auto h-80 text-xs font-mono whitespace-pre-wrap">
+                      {formatJSON(response)}
+                    </pre>
+                  </TabsContent>
                 </Tabs>
               </div>
             ) : (
               <div className="h-80 flex flex-col items-center justify-center text-muted-foreground">
-                <Send className="h-12 w-12 mb-4" />
+                <Code className="h-12 w-12 mb-4" />
                 <p className="text-center">Send a request to see the response here</p>
+                <p className="text-center text-sm mt-2">Configure your request parameters on the left and click "Execute Request"</p>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+      
+      {/* Save Request Dialog */}
+      {saveDialogOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-card w-full max-w-md p-6 rounded-lg shadow-lg">
+            <h2 className="text-lg font-bold mb-4">Save Request</h2>
+            <div className="mb-4">
+              <Label htmlFor="requestName">Request Name</Label>
+              <Input 
+                id="requestName" 
+                value={currentRequestName}
+                onChange={(e) => setCurrentRequestName(e.target.value)}
+                placeholder="My API Request"
+                className="mt-1"
+              />
+            </div>
+            
+            <div className="text-sm text-muted-foreground mb-4">
+              <p>This will save the current request configuration including URL, headers, and body.</p>
+            </div>
+            
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveRequest}>
+                Save Request
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
