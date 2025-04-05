@@ -1,22 +1,24 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import axios from 'axios';
-import { toast } from '@/lib/toast';
 
-interface User {
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { toast } from '@/lib/toast';
+import { supabase } from '@/integrations/supabase/client';
+import { User, Session } from '@supabase/supabase-js';
+
+interface AuthUser {
   username: string;
   role: 'provider' | 'consumer' | 'admin';
   id: string;
 }
 
 interface AuthContextType {
-  user: User | null;
-  token: string | null;
+  user: AuthUser | null;
+  session: Session | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   userRole: 'provider' | 'consumer' | 'admin' | null;
-  login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, role: 'provider' | 'consumer') => Promise<void>;
-  logout: () => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, role: 'provider' | 'consumer') => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -81,63 +83,129 @@ if (Object.keys(mockUsers).length === 0) {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    // Check for existing token in localStorage
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+  const initializeAuth = async () => {
+    setIsLoading(true);
     
-    if (storedToken && storedUser) {
-      try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
-      } catch (e) {
-        console.error('Failed to parse stored user:', e);
-        // Clear invalid storage
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+    try {
+      // First, try to get the session from Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session) {
+        const userData: AuthUser = {
+          id: session.user.id,
+          username: session.user.email || 'User',
+          // Default to 'consumer' role, can be updated later based on your user profile system
+          role: 'consumer' as 'provider' | 'consumer' | 'admin'
+        };
+        
+        setSession(session);
+        setUser(userData);
+        
+        // Set user ID in localStorage for mock services
+        localStorage.setItem('userId', userData.id);
+      } else {
+        // Fallback to localStorage token
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
+        
+        if (storedToken && storedUser) {
+          try {
+            setUser(JSON.parse(storedUser));
+          } catch (e) {
+            console.error('Failed to parse stored user:', e);
+            // Clear invalid storage
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
+        }
       }
+    } catch (error) {
+      console.error('Error initializing auth:', error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        
+        if (session?.user) {
+          const userData: AuthUser = {
+            id: session.user.id,
+            username: session.user.email || 'User',
+            // Default to 'consumer' role, can be updated later
+            role: 'consumer' as 'provider' | 'consumer' | 'admin'
+          };
+          setUser(userData);
+          localStorage.setItem('userId', userData.id);
+        } else {
+          setUser(null);
+          localStorage.removeItem('userId');
+        }
+      }
+    );
+
+    // Initialize auth
+    initializeAuth();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     try {
       setIsLoading(true);
       
-      // Always use mock database for demo
-      console.log('Trying to login with mock user:', username);
-      console.log('Available mock users:', Object.keys(mockUsers));
-      
-      // Check if user exists and password matches
-      if (mockUsers[username] && mockUsers[username].password === password) {
-        // Create a simple token
-        const mockToken = `mock-token-${Date.now()}`;
-        const userObj = { 
-          username,
-          role: mockUsers[username].role,
-          id: mockUsers[username].id
-        };
+      if (email.includes('@')) {
+        // Real auth via Supabase
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
         
-        setToken(mockToken);
-        setUser(userObj);
-        
-        localStorage.setItem('token', mockToken);
-        localStorage.setItem('user', JSON.stringify(userObj));
-        localStorage.setItem('userId', mockUsers[username].id);
+        if (error) throw error;
         
         toast('Success', {
           description: 'You have successfully logged in.',
         });
         return;
       } else {
-        throw new Error('Invalid credentials');
+        // Mock auth for usernames
+        console.log('Trying to login with mock user:', email);
+        
+        // Check if user exists and password matches
+        if (mockUsers[email] && mockUsers[email].password === password) {
+          // Create a simple token
+          const mockToken = `mock-token-${Date.now()}`;
+          const userObj: AuthUser = { 
+            username: email,
+            role: mockUsers[email].role,
+            id: mockUsers[email].id
+          };
+          
+          localStorage.setItem('token', mockToken);
+          localStorage.setItem('user', JSON.stringify(userObj));
+          localStorage.setItem('userId', mockUsers[email].id);
+          
+          setUser(userObj);
+          
+          toast('Success', {
+            description: 'You have successfully logged in.',
+          });
+          return;
+        } else {
+          throw new Error('Invalid credentials');
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
       toast('Error', {
         description: 'Failed to login. Please check your credentials.',
@@ -149,39 +217,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (username: string, password: string, role: 'provider' | 'consumer') => {
+  const register = async (email: string, password: string, role: 'provider' | 'consumer') => {
     try {
       setIsLoading(true);
       
-      // Check if username already exists
-      if (mockUsers[username]) {
-        throw new Error('Username already exists');
+      if (email.includes('@')) {
+        // Real auth via Supabase
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              role
+            }
+          }
+        });
+        
+        if (error) throw error;
+        
+        toast('Success', {
+          description: 'Registration successful. Please check your email for verification.',
+        });
+        return;
+      } else {
+        // Mock registration
+        // Check if username already exists
+        if (mockUsers[email]) {
+          throw new Error('Username already exists');
+        }
+        
+        // Generate a mock user ID
+        const userId = `user-${Date.now()}`;
+        
+        // Store the new user
+        const newUser = {
+          username: email,
+          password,
+          role,
+          id: userId
+        };
+        
+        mockUsers[email] = newUser;
+        setStoredMockUsers(mockUsers);
+        
+        console.log('Registered user in mock database:', email, 'with role:', role, 'and ID:', userId);
+        
+        toast('Success', {
+          description: 'Registration successful. Please log in.',
+        });
+        return;
       }
-      
-      // Generate a mock user ID
-      const userId = `user-${Date.now()}`;
-      
-      // Store the new user
-      const newUser = {
-        username,
-        password,
-        role,
-        id: userId
-      };
-      
-      mockUsers[username] = newUser;
-      setStoredMockUsers(mockUsers);
-      
-      console.log('Registered user in mock database:', username, 'with role:', role, 'and ID:', userId);
-      
-      toast('Success', {
-        description: 'Registration successful. Please log in.',
-      });
-      return;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
       toast('Error', {
-        description: 'Failed to register. Username may already exist.',
+        description: 'Failed to register: ' + error.message,
         variant: 'destructive',
       });
       throw error;
@@ -190,21 +279,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('userId');
-    toast('Logged out', {
-      description: 'You have been successfully logged out.',
-    });
+  const logout = async () => {
+    setIsLoading(true);
+    
+    try {
+      // Log out from Supabase auth
+      await supabase.auth.signOut();
+      
+      // Also clear any localStorage items
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('userId');
+      
+      setUser(null);
+      setSession(null);
+      
+      toast('Logged out', {
+        description: 'You have been successfully logged out.',
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      token, 
+      session,
+      token: session?.access_token || null,
       isLoading, 
       isAuthenticated: !!user,
       userRole: user?.role || null,

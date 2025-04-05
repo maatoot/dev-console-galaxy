@@ -1,19 +1,7 @@
+
 import axios from 'axios';
-
-const API_BASE_URL = 'http://localhost:3000'; // Replace with your actual API base URL
-
-interface ApiResponse<T> {
-  data: T;
-  status: number;
-  statusText: string;
-  headers?: any;
-}
-
-interface ApiErrorResponse {
-  message: string;
-  status: number;
-  statusText: string;
-}
+import apiService from './supabaseService';
+import { supabase, logApiRequest } from '@/integrations/supabase/client';
 
 // Mock data for local development and fallbacks
 const MOCK_DATA = {
@@ -89,59 +77,6 @@ const generateSubscription = (apiId: string, plan: string = 'free', userId: stri
   };
 };
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000, // Adjust as needed
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Function to handle API requests and response parsing with fallback
-async function handleRequest<T>(request: Promise<any>, fallbackData?: T): Promise<ApiResponse<T>> {
-  try {
-    const response = await request;
-    return {
-      data: response.data as T,
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    };
-  } catch (error: any) {
-    console.error('API request failed:', error);
-    
-    // If fallback data was provided, use it instead of throwing an error
-    if (fallbackData !== undefined) {
-      console.log('Using fallback data:', fallbackData);
-      return {
-        data: fallbackData as T,
-        status: 200,
-        statusText: 'OK (Fallback)',
-      };
-    }
-    
-    // Axios specific error handling
-    if (axios.isAxiosError(error)) {
-      const message = error.response?.data?.message || error.message;
-      const status = error.response?.status || 500;
-      const statusText = error.response?.statusText || 'Internal Server Error';
-
-      throw {
-        message: message,
-        status: status,
-        statusText: statusText,
-      } as ApiErrorResponse;
-    } else {
-      // Generic error handling
-      throw {
-        message: 'An unexpected error occurred',
-        status: 500,
-        statusText: 'Internal Server Error',
-      } as ApiErrorResponse;
-    }
-  }
-}
-
 // Local storage management for mock data persistence
 const getLocalAPIs = () => {
   try {
@@ -173,21 +108,63 @@ const setLocalSubscriptions = (subscriptions: any[]) => {
   return subscriptions;
 };
 
-// Enhanced API service with fallbacks
+// Use Supabase API functions as primary, with fallback to local storage
 const apis = {
-  list: async (): Promise<ApiResponse<any[]>> => {
-    return handleRequest<any[]>(api.get('/apis'), getLocalAPIs());
-  },
-  get: async (id: string): Promise<ApiResponse<any>> => {
-    const localApis = getLocalAPIs();
-    const foundApi = localApis.find((api: any) => api.id === id);
-    return handleRequest<any>(api.get(`/apis/${id}`), foundApi);
-  },
-  create: async (data: any): Promise<ApiResponse<any>> => {
+  list: async () => {
     try {
-      return await handleRequest<any>(api.post('/apis', data));
+      const { data: session } = await supabase.auth.getSession();
+      const isProvider = session?.session?.user?.user_metadata?.role === 'provider';
+      
+      const data = await apiService.getApis({ isProvider });
+      
+      if (data && data.length > 0) {
+        return { data, status: 200, statusText: 'OK' };
+      } else {
+        throw new Error('No APIs found');
+      }
     } catch (error) {
-      // Fallback for create: create locally
+      console.log('Falling back to local APIs');
+      return {
+        data: getLocalAPIs(),
+        status: 200,
+        statusText: 'OK (Local Fallback)'
+      };
+    }
+  },
+  
+  get: async (id: string) => {
+    try {
+      const data = await apiService.getApiById(id);
+      
+      if (data) {
+        return { data, status: 200, statusText: 'OK' };
+      } else {
+        throw new Error('API not found');
+      }
+    } catch (error) {
+      console.log('Falling back to local API');
+      const localApis = getLocalAPIs();
+      const foundApi = localApis.find((api: any) => api.id === id);
+      
+      return {
+        data: foundApi,
+        status: 200,
+        statusText: 'OK (Local Fallback)'
+      };
+    }
+  },
+  
+  create: async (data: any) => {
+    try {
+      const result = await apiService.createApi(data);
+      
+      if (result) {
+        return { data: result, status: 201, statusText: 'Created' };
+      } else {
+        throw new Error('Failed to create API');
+      }
+    } catch (error) {
+      console.log('Falling back to local API creation');
       const newApi = {
         ...data,
         id: `api-${Date.now()}`,
@@ -206,11 +183,18 @@ const apis = {
       };
     }
   },
-  update: async (id: string, data: any): Promise<ApiResponse<any>> => {
+  
+  update: async (id: string, data: any) => {
     try {
-      return await handleRequest<any>(api.put(`/apis/${id}`, data));
+      const result = await apiService.updateApi(id, data);
+      
+      if (result) {
+        return { data: result, status: 200, statusText: 'Updated' };
+      } else {
+        throw new Error('Failed to update API');
+      }
     } catch (error) {
-      // Fallback for update: update locally
+      console.log('Falling back to local API update');
       const localApis = getLocalAPIs();
       const index = localApis.findIndex((api: any) => api.id === id);
       
@@ -225,14 +209,21 @@ const apis = {
         };
       }
       
-      throw error; // Re-throw if API not found locally
+      throw error;
     }
   },
-  delete: async (id: string): Promise<ApiResponse<void>> => {
+  
+  delete: async (id: string) => {
     try {
-      return await handleRequest<void>(api.delete(`/apis/${id}`));
+      const success = await apiService.deleteApi(id);
+      
+      if (success) {
+        return { data: undefined, status: 200, statusText: 'Deleted' };
+      } else {
+        throw new Error('Failed to delete API');
+      }
     } catch (error) {
-      // Fallback for delete: delete locally
+      console.log('Falling back to local API deletion');
       const localApis = getLocalAPIs();
       const filtered = localApis.filter((api: any) => api.id !== id);
       
@@ -246,14 +237,26 @@ const apis = {
         };
       }
       
-      throw error; // Re-throw if API not found locally
+      throw error;
     }
   },
-  addEndpoint: async (apiId: string, endpoint: { path: string; description: string }): Promise<ApiResponse<any>> => {
+  
+  addEndpoint: async (apiId: string, endpoint: { path: string; description: string }) => {
     try {
-      return await handleRequest<any>(api.post(`/apis/${apiId}/endpoints`, endpoint));
+      // Get the current API
+      const { data } = await apis.get(apiId);
+      
+      if (!data) {
+        throw new Error('API not found');
+      }
+      
+      // Add the new endpoint
+      const updatedEndpoints = [...(data.endpoints || []), endpoint];
+      
+      // Update the API
+      return apis.update(apiId, { endpoints: updatedEndpoints });
     } catch (error) {
-      // Fallback for addEndpoint: add locally
+      console.log('Falling back to local endpoint addition');
       const localApis = getLocalAPIs();
       const index = localApis.findIndex((api: any) => api.id === apiId);
       
@@ -272,17 +275,23 @@ const apis = {
         };
       }
       
-      throw error; // Re-throw if API not found locally
+      throw error;
     }
   },
 };
 
 const subscriptions = {
-  list: async (): Promise<ApiResponse<any[]>> => {
+  list: async () => {
     try {
-      return await handleRequest<any[]>(api.get('/subscriptions'));
+      const data = await apiService.getSubscriptions();
+      
+      if (data && data.length >= 0) {
+        return { data, status: 200, statusText: 'OK' };
+      } else {
+        throw new Error('Failed to fetch subscriptions');
+      }
     } catch (error) {
-      // Return local subscriptions for the current user
+      console.log('Falling back to local subscriptions');
       const userId = localStorage.getItem('userId');
       const localSubscriptions = getLocalSubscriptions();
       
@@ -297,11 +306,18 @@ const subscriptions = {
       };
     }
   },
-  get: async (id: string): Promise<ApiResponse<any>> => {
+  
+  get: async (id: string) => {
     try {
-      return await handleRequest<any>(api.get(`/subscriptions/${id}`));
+      const data = await apiService.getSubscriptionById(id);
+      
+      if (data) {
+        return { data, status: 200, statusText: 'OK' };
+      } else {
+        throw new Error('Subscription not found');
+      }
     } catch (error) {
-      // Find local subscription
+      console.log('Falling back to local subscription');
       const localSubscriptions = getLocalSubscriptions();
       const found = localSubscriptions.find((sub: any) => sub.id === id);
       
@@ -313,14 +329,21 @@ const subscriptions = {
         };
       }
       
-      throw error; // Re-throw if subscription not found locally
+      throw error;
     }
   },
-  create: async (data: any): Promise<ApiResponse<any>> => {
+  
+  create: async (data: any) => {
     try {
-      return await handleRequest<any>(api.post('/subscriptions', data));
+      const result = await apiService.createSubscription(data);
+      
+      if (result) {
+        return { data: result, status: 201, statusText: 'Created' };
+      } else {
+        throw new Error('Failed to create subscription');
+      }
     } catch (error) {
-      // Create local subscription
+      console.log('Falling back to local subscription creation');
       const userId = localStorage.getItem('userId') || 'user-1';
       const subscription = generateSubscription(data.api_id, data.plan, userId);
       
@@ -335,11 +358,18 @@ const subscriptions = {
       };
     }
   },
-  update: async (id: string, data: any): Promise<ApiResponse<any>> => {
+  
+  update: async (id: string, data: any) => {
     try {
-      return await handleRequest<any>(api.put(`/subscriptions/${id}`, data));
+      const result = await apiService.updateSubscription(id, data);
+      
+      if (result) {
+        return { data: result, status: 200, statusText: 'Updated' };
+      } else {
+        throw new Error('Failed to update subscription');
+      }
     } catch (error) {
-      // Update local subscription
+      console.log('Falling back to local subscription update');
       const localSubscriptions = getLocalSubscriptions();
       const index = localSubscriptions.findIndex((sub: any) => sub.id === id);
       
@@ -354,14 +384,21 @@ const subscriptions = {
         };
       }
       
-      throw error; // Re-throw if subscription not found locally
+      throw error;
     }
   },
-  delete: async (id: string): Promise<ApiResponse<void>> => {
+  
+  delete: async (id: string) => {
     try {
-      return await handleRequest<void>(api.delete(`/subscriptions/${id}`));
+      const success = await apiService.cancelSubscription(id);
+      
+      if (success) {
+        return { data: undefined, status: 200, statusText: 'Subscription cancelled' };
+      } else {
+        throw new Error('Failed to cancel subscription');
+      }
     } catch (error) {
-      // Delete local subscription
+      console.log('Falling back to local subscription deletion');
       const localSubscriptions = getLocalSubscriptions();
       const filtered = localSubscriptions.filter((sub: any) => sub.id !== id);
       
@@ -375,19 +412,27 @@ const subscriptions = {
         };
       }
       
-      throw error; // Re-throw if subscription not found locally
+      throw error;
     }
   },
 };
 
-// Updated gateway service for real API testing
+// Gateway service for API testing
 const gateway = {
   proxy: async (apiKey: string, url: string, options: {
     method: string;
     headers?: Record<string, string>;
     data?: any;
-  }): Promise<ApiResponse<any>> => {
+  }): Promise<{
+    data: any;
+    status: number;
+    statusText: string;
+    headers: any;
+  }> => {
     try {
+      // Start measuring response time
+      const startTime = Date.now();
+      
       // Extract the base URL and path from the provided URL
       let targetUrl = url;
       
@@ -426,6 +471,36 @@ const gateway = {
           throw new Error(`Unsupported method: ${options.method}`);
       }
       
+      // Calculate response time
+      const responseTime = Date.now() - startTime;
+      
+      // Find subscription ID for logging (if using Supabase)
+      try {
+        const { data: subscriptions } = await supabase
+          .from('subscriptions')
+          .select('id')
+          .eq('api_key', apiKey)
+          .limit(1);
+          
+        if (subscriptions && subscriptions.length > 0) {
+          // Log the request to Supabase
+          await logApiRequest({
+            subscriptionId: subscriptions[0].id,
+            endpointPath: new URL(targetUrl).pathname,
+            statusCode: response.status,
+            responseTime,
+            requestMethod: options.method.toUpperCase(),
+            requestHeaders: headers,
+            requestQuery: new URL(targetUrl).search || null,
+            requestBody: options.data || null,
+            responseHeaders: response.headers,
+            responseBody: response.data || null
+          });
+        }
+      } catch (logError) {
+        console.error('Error logging API request:', logError);
+      }
+      
       return {
         data: response.data,
         status: response.status,
@@ -456,6 +531,7 @@ const gateway = {
   }
 };
 
+// Combined API client that uses Supabase with fallbacks
 const apiClient = {
   apis,
   subscriptions,

@@ -20,3 +20,52 @@ export const supabase = createClient<Database>(
     }
   }
 );
+
+// Log API request helper function to track API usage
+export const logApiRequest = async ({
+  subscriptionId,
+  endpointPath,
+  statusCode,
+  responseTime,
+  requestMethod,
+  requestHeaders = null,
+  requestQuery = null,
+  requestBody = null,
+  responseHeaders = null,
+  responseBody = null,
+  error = null
+}: {
+  subscriptionId: string;
+  endpointPath: string;
+  statusCode: number;
+  responseTime: number;
+  requestMethod: string;
+  requestHeaders?: any;
+  requestQuery?: any;
+  requestBody?: any;
+  responseHeaders?: any;
+  responseBody?: any;
+  error?: string;
+}) => {
+  try {
+    const { data, error: dbError } = await supabase.rpc('log_api_request', {
+      p_subscription_id: subscriptionId,
+      p_endpoint_path: endpointPath,
+      p_status_code: statusCode,
+      p_response_time: responseTime,
+      p_request_method: requestMethod,
+      p_request_headers: requestHeaders,
+      p_request_query: requestQuery,
+      p_request_body: requestBody,
+      p_response_headers: responseHeaders,
+      p_response_body: responseBody,
+      p_error: error
+    });
+
+    if (dbError) console.error('Failed to log API request:', dbError);
+    return data;
+  } catch (error) {
+    console.error('Error in logApiRequest:', error);
+    return null;
+  }
+};

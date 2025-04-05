@@ -9,13 +9,255 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      api_requests: {
+        Row: {
+          endpoint_path: string
+          error: string | null
+          id: string
+          request_body: Json | null
+          request_date: string | null
+          request_headers: Json | null
+          request_method: string
+          request_query: Json | null
+          response_body: Json | null
+          response_headers: Json | null
+          response_time: number | null
+          status_code: number | null
+          subscription_id: string
+        }
+        Insert: {
+          endpoint_path: string
+          error?: string | null
+          id?: string
+          request_body?: Json | null
+          request_date?: string | null
+          request_headers?: Json | null
+          request_method: string
+          request_query?: Json | null
+          response_body?: Json | null
+          response_headers?: Json | null
+          response_time?: number | null
+          status_code?: number | null
+          subscription_id: string
+        }
+        Update: {
+          endpoint_path?: string
+          error?: string | null
+          id?: string
+          request_body?: Json | null
+          request_date?: string | null
+          request_headers?: Json | null
+          request_method?: string
+          request_query?: Json | null
+          response_body?: Json | null
+          response_headers?: Json | null
+          response_time?: number | null
+          status_code?: number | null
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_requests_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      apis: {
+        Row: {
+          authentication: Json | null
+          base_url: string
+          created_at: string | null
+          default_headers: Json | null
+          description: string | null
+          endpoints: Json | null
+          id: string
+          logo: string | null
+          name: string
+          provider_id: string
+          updated_at: string | null
+          visibility: string | null
+        }
+        Insert: {
+          authentication?: Json | null
+          base_url: string
+          created_at?: string | null
+          default_headers?: Json | null
+          description?: string | null
+          endpoints?: Json | null
+          id?: string
+          logo?: string | null
+          name: string
+          provider_id: string
+          updated_at?: string | null
+          visibility?: string | null
+        }
+        Update: {
+          authentication?: Json | null
+          base_url?: string
+          created_at?: string | null
+          default_headers?: Json | null
+          description?: string | null
+          endpoints?: Json | null
+          id?: string
+          logo?: string | null
+          name?: string
+          provider_id?: string
+          updated_at?: string | null
+          visibility?: string | null
+        }
+        Relationships: []
+      }
+      subscription_plans: {
+        Row: {
+          api_id: string
+          created_at: string | null
+          description: string | null
+          features: Json | null
+          id: string
+          is_custom: boolean | null
+          name: string
+          price_monthly: number | null
+          price_yearly: number | null
+          request_limit: number | null
+        }
+        Insert: {
+          api_id: string
+          created_at?: string | null
+          description?: string | null
+          features?: Json | null
+          id?: string
+          is_custom?: boolean | null
+          name: string
+          price_monthly?: number | null
+          price_yearly?: number | null
+          request_limit?: number | null
+        }
+        Update: {
+          api_id?: string
+          created_at?: string | null
+          description?: string | null
+          features?: Json | null
+          id?: string
+          is_custom?: boolean | null
+          name?: string
+          price_monthly?: number | null
+          price_yearly?: number | null
+          request_limit?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscription_plans_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "api_analytics"
+            referencedColumns: ["api_id"]
+          },
+          {
+            foreignKeyName: "subscription_plans_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "apis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          api_id: string
+          api_key: string
+          created_at: string | null
+          end_date: string | null
+          id: string
+          plan: string
+          start_date: string | null
+          status: string | null
+          updated_at: string | null
+          usage_count: number | null
+          usage_limit: number | null
+          user_id: string
+        }
+        Insert: {
+          api_id: string
+          api_key: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          plan?: string
+          start_date?: string | null
+          status?: string | null
+          updated_at?: string | null
+          usage_count?: number | null
+          usage_limit?: number | null
+          user_id: string
+        }
+        Update: {
+          api_id?: string
+          api_key?: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          plan?: string
+          start_date?: string | null
+          status?: string | null
+          updated_at?: string | null
+          usage_count?: number | null
+          usage_limit?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "api_analytics"
+            referencedColumns: ["api_id"]
+          },
+          {
+            foreignKeyName: "subscriptions_api_id_fkey"
+            columns: ["api_id"]
+            isOneToOne: false
+            referencedRelation: "apis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
-      [_ in never]: never
+      api_analytics: {
+        Row: {
+          api_id: string | null
+          api_name: string | null
+          avg_response_time: number | null
+          day: string | null
+          failed_requests: number | null
+          max_response_time: number | null
+          provider_id: string | null
+          successful_requests: number | null
+          total_requests: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
-      [_ in never]: never
+      log_api_request: {
+        Args: {
+          p_subscription_id: string
+          p_endpoint_path: string
+          p_status_code: number
+          p_response_time: number
+          p_request_method: string
+          p_request_headers?: Json
+          p_request_query?: Json
+          p_request_body?: Json
+          p_response_headers?: Json
+          p_response_body?: Json
+          p_error?: string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
