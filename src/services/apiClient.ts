@@ -380,42 +380,47 @@ const subscriptions = {
   },
 };
 
-// Add the gateway service for API testing
+// Updated gateway service for real API testing
 const gateway = {
-  proxy: async (apiKey: string, path: string, options: {
+  proxy: async (apiKey: string, url: string, options: {
     method: string;
     headers?: Record<string, string>;
     data?: any;
   }): Promise<ApiResponse<any>> => {
-    // Create a new axios instance for the proxy request to avoid interceptor conflicts
-    const proxyApi = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
-        ...options.headers
-      },
-    });
-    
     try {
+      // Extract the base URL and path from the provided URL
+      let targetUrl = url;
+      
+      // Create request headers, including the API key if provided
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(apiKey && { 'X-API-Key': apiKey }),
+        ...options.headers
+      };
+      
+      // Make a direct request to the specified URL using Axios
       let response;
+      
+      console.log(`Making ${options.method} request to: ${targetUrl}`, {
+        headers,
+        data: options.data
+      });
       
       switch (options.method.toUpperCase()) {
         case 'GET':
-          response = await proxyApi.get(`/gateway/${path}`);
+          response = await axios.get(targetUrl, { headers });
           break;
         case 'POST':
-          response = await proxyApi.post(`/gateway/${path}`, options.data);
+          response = await axios.post(targetUrl, options.data, { headers });
           break;
         case 'PUT':
-          response = await proxyApi.put(`/gateway/${path}`, options.data);
+          response = await axios.put(targetUrl, options.data, { headers });
           break;
         case 'DELETE':
-          response = await proxyApi.delete(`/gateway/${path}`);
+          response = await axios.delete(targetUrl, { headers });
           break;
         case 'PATCH':
-          response = await proxyApi.patch(`/gateway/${path}`, options.data);
+          response = await axios.patch(targetUrl, options.data, { headers });
           break;
         default:
           throw new Error(`Unsupported method: ${options.method}`);
@@ -427,59 +432,26 @@ const gateway = {
         statusText: response.statusText,
         headers: response.headers,
       };
-    } catch (error) {
-      // Check if we're trying to access the Instagram API
-      if (path.includes('instagram') || path.includes('45.84.197.155')) {
-        try {
-          // Try direct fetch to the Instagram API
-          const instagramUrl = 'http://45.84.197.155:80/index';
-          const directResponse = await axios({
-            method: options.method,
-            url: instagramUrl,
-            params: { url: path.split('?url=')[1] },
-            headers: options.headers,
-            data: options.data
-          });
-          
-          return {
-            data: directResponse.data,
-            status: directResponse.status,
-            statusText: directResponse.statusText,
-            headers: directResponse.headers,
-          };
-        } catch (directError) {
-          console.error('Direct Instagram API call failed:', directError);
-        }
-      }
+    } catch (error: any) {
+      console.error('API gateway error:', error);
       
-      // Mock API gateway response for local development
-      const mockResponse = {
-        success: true,
-        message: "This is a mock API response",
-        request: {
-          path,
-          method: options.method,
-          headers: options.headers,
-          data: options.data
-        },
-        data: {
-          id: "mock-data-123",
-          timestamp: new Date().toISOString(),
-          info: "This is a simulated response since there's no real backend connected"
-        }
-      };
-      
+      // Try to provide as much information as possible from the error
       if (axios.isAxiosError(error)) {
-        // Return the mock response to simulate the API
-        console.log('Using mock gateway response for API testing');
         return {
-          data: mockResponse,
-          status: 200,
-          statusText: 'OK (Mock)',
-          headers: {},
+          data: error.response?.data || { error: error.message },
+          status: error.response?.status || 500,
+          statusText: error.response?.statusText || 'Error',
+          headers: error.response?.headers,
         };
       }
-      throw error;
+      
+      // Fallback for non-Axios errors
+      return {
+        data: { error: error.message || 'Unknown error' },
+        status: 500,
+        statusText: 'Internal Error',
+        headers: {},
+      };
     }
   }
 };

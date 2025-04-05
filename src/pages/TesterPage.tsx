@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -67,7 +66,6 @@ const TesterPage = () => {
   const initialPath = searchParams.get('path') || '';
   const initialBaseUrl = searchParams.get('baseUrl') || '';
   
-  // Main request state
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [path, setPath] = useState(initialPath);
@@ -78,7 +76,6 @@ const TesterPage = () => {
   const [paramsList, setParamsList] = useState<HeaderKeyValue[]>([{ key: '', value: '' }]);
   const [body, setBody] = useState('');
   
-  // Response state
   const [response, setResponse] = useState<any>(null);
   const [responseTime, setResponseTime] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -91,7 +88,6 @@ const TesterPage = () => {
   const [currentRequestName, setCurrentRequestName] = useState('');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   
-  // Example APIs that users can quickly use
   const exampleAPIs: ExampleAPI[] = [
     {
       name: "Instagram API",
@@ -111,7 +107,6 @@ const TesterPage = () => {
   useEffect(() => {
     setIsEmbedded(window.self !== window.top);
     
-    // Load request logs from localStorage
     const storedLogs = localStorage.getItem('api_tester_request_logs');
     if (storedLogs) {
       try {
@@ -121,7 +116,6 @@ const TesterPage = () => {
       }
     }
     
-    // Load saved requests
     const storedRequests = localStorage.getItem('api_tester_saved_requests');
     if (storedRequests) {
       try {
@@ -132,12 +126,10 @@ const TesterPage = () => {
     }
     
     if (initialApiKey) {
-      // If we have an API key but no path, set a default
       if (!initialPath) {
         setPath('');
       }
       
-      // If we have a base URL, use it
       if (initialBaseUrl) {
         setBaseUrl(initialBaseUrl);
       }
@@ -203,13 +195,10 @@ const TesterPage = () => {
     
     let finalUrl = baseUrl.trim();
     
-    // Add the path
     if (path) {
-      // Make sure the base URL ends with a slash and the path doesn't start with one
       if (!finalUrl.endsWith('/') && !path.startsWith('/')) {
         finalUrl += '/';
       }
-      // If both baseUrl ends with / and path starts with /, remove one
       if (finalUrl.endsWith('/') && path.startsWith('/')) {
         finalUrl += path.substring(1);
       } else {
@@ -217,7 +206,6 @@ const TesterPage = () => {
       }
     }
     
-    // Add query parameters
     const queryParams = paramsList.filter(p => p.key.trim());
     if (queryParams.length > 0) {
       finalUrl += (finalUrl.includes('?') ? '&' : '?') + 
@@ -230,7 +218,7 @@ const TesterPage = () => {
   };
 
   const saveRequestLog = (log: RequestLog) => {
-    const updatedLogs = [log, ...requestLogs.slice(0, 19)]; // Keep only last 20 logs
+    const updatedLogs = [log, ...requestLogs.slice(0, 19)];
     setRequestLogs(updatedLogs);
     localStorage.setItem('api_tester_request_logs', JSON.stringify(updatedLogs));
   };
@@ -290,42 +278,24 @@ const TesterPage = () => {
           parsedBody = JSON.parse(body);
         }
       } catch (e) {
-        toast('Warning', {
-          description: 'Invalid JSON in request body. Using empty body.',
-          variant: 'destructive'
-        });
+        parsedBody = body.trim() ? body : undefined;
+        
+        if (body.trim()) {
+          toast('Info', {
+            description: 'Using raw text body instead of JSON.',
+          });
+        }
       }
       
-      let response;
-      
-      if (apiKey) {
-        // Use API Gateway with the provided API key
-        response = await apiClient.gateway.proxy(apiKey, finalUrl, {
+      const response = await apiClient.gateway.proxy(
+        apiKey,
+        finalUrl,
+        {
           method,
           headers: parsedHeaders,
           data: parsedBody
-        });
-      } else {
-        // Direct fetch 
-        const fetchOptions: RequestInit = {
-          method,
-          headers: parsedHeaders as HeadersInit,
-        };
-        
-        if (['POST', 'PUT', 'PATCH'].includes(method) && parsedBody) {
-          fetchOptions.body = JSON.stringify(parsedBody);
         }
-        
-        const fetchResponse = await fetch(finalUrl, fetchOptions);
-        const responseData = await fetchResponse.json();
-        
-        response = {
-          status: fetchResponse.status,
-          statusText: fetchResponse.statusText,
-          data: responseData,
-          headers: Object.fromEntries([...fetchResponse.headers.entries()])
-        };
-      }
+      );
       
       const endTime = performance.now();
       const responseTimeMs = Math.round(endTime - startTime);
@@ -338,10 +308,13 @@ const TesterPage = () => {
         headers: response.headers
       });
       
-      // Update and save request log
       requestLog.status = response.status;
       requestLog.responseTime = responseTimeMs;
       saveRequestLog(requestLog);
+      
+      toast('Success', {
+        description: `Request completed with status ${response.status}`,
+      });
       
     } catch (error: any) {
       const endTime = performance.now();
@@ -358,20 +331,19 @@ const TesterPage = () => {
           headers: error.response.headers
         });
         
-        // Update request log with error status
         requestLog.status = error.response.status;
-        requestLog.responseTime = responseTimeMs;
-      } else if (error.request) {
-        setError('No response received from server. Check the API endpoint and your network connection.');
-        requestLog.status = 0;
-        requestLog.responseTime = responseTimeMs;
       } else {
-        setError(`Error: ${error.message}`);
+        setError(`Error: ${error.message || 'Unknown error'}`);
         requestLog.status = 500;
-        requestLog.responseTime = responseTimeMs;
       }
       
+      requestLog.responseTime = responseTimeMs;
       saveRequestLog(requestLog);
+      
+      toast('Error', {
+        description: `Request failed: ${error.message || 'Unknown error'}`,
+        variant: 'destructive'
+      });
     } finally {
       setLoading(false);
     }
@@ -469,20 +441,17 @@ const TesterPage = () => {
       setMethod(endpoint.method);
       setPath(endpoint.path);
       
-      // Set endpoint parameters if any
       if (endpoint.params) {
         const params = Object.entries(endpoint.params).map(([key, value]) => ({ key, value }));
         setParamsList(params.length > 0 ? params : [{ key: '', value: '' }]);
       }
       
-      // Set endpoint headers if any
       if (endpoint.headers) {
         const headers = Object.entries(endpoint.headers).map(([key, value]) => ({ key, value }));
         setHeadersList(headers.length > 0 ? headers : [{ key: 'Content-Type', value: 'application/json' }]);
       }
     }
     
-    // Clear API key when using examples
     setApiKey('');
   };
 
@@ -574,7 +543,6 @@ const TesterPage = () => {
         </Card>
       )}
 
-      {/* Example APIs section */}
       <Card>
         <CardHeader>
           <CardTitle>Example APIs</CardTitle>
@@ -905,7 +873,6 @@ const TesterPage = () => {
               </div>
             ) : response ? (
               <div>
-                {/* Status code card - always visible */}
                 <div className={`p-3 mb-4 rounded-md ${
                   response.status >= 200 && response.status < 300 
                     ? 'bg-green-50 border border-green-200' 
@@ -925,7 +892,6 @@ const TesterPage = () => {
                   </div>
                 </div>
                 
-                {/* Request Summary */}
                 <div className="mb-4 bg-muted/50 rounded-md p-3 border border-border">
                   <h3 className="text-sm font-medium mb-2">Request URL</h3>
                   <div className="flex items-center">
@@ -943,7 +909,6 @@ const TesterPage = () => {
                   </div>
                 </div>
                 
-                {/* Expanded response details */}
                 <div className={`overflow-hidden transition-all duration-300 ${
                   isResponseExpanded ? 'max-h-[800px]' : 'max-h-0'
                 }`}>
@@ -1004,7 +969,6 @@ const TesterPage = () => {
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
-                        {/* Button to open in new tab if it's a URL */}
                         {baseUrl && (
                           <Button 
                             variant="ghost" 
@@ -1043,7 +1007,6 @@ const TesterPage = () => {
         </Card>
       </div>
       
-      {/* Save Request Dialog */}
       {saveDialogOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card w-full max-w-md p-6 rounded-lg shadow-lg">
