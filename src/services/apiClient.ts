@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 import apiService from './supabaseService';
 import { supabase, logApiRequest } from '@/integrations/supabase/client';
@@ -466,15 +467,16 @@ const gateway = {
       const responseTime = Date.now() - startTime;
       
       try {
-        const { data: subscriptionsData } = await supabase
+        // Find the subscription ID by API key
+        const { data: subscriptionData } = await supabase
           .from('subscriptions')
           .select('id')
           .eq('api_key', apiKey)
           .limit(1);
           
-        if (subscriptionsData && subscriptionsData.length > 0) {
+        if (subscriptionData && subscriptionData.length > 0) {
           await logApiRequest({
-            subscriptionId: subscriptionsData[0].id,
+            subscriptionId: subscriptionData[0].id,
             endpointPath: new URL(targetUrl).pathname,
             statusCode: response.status,
             responseTime,
@@ -504,7 +506,7 @@ const gateway = {
           data: error.response?.data || { error: error.message },
           status: error.response?.status || 500,
           statusText: error.response?.statusText || 'Error',
-          headers: error.response?.headers,
+          headers: error.response?.headers || {},
         };
       }
       

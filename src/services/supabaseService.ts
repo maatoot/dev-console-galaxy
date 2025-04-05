@@ -2,6 +2,7 @@
 import { supabase, logApiRequest } from '@/integrations/supabase/client';
 import { toast } from '@/lib/toast';
 import { Database } from '@/integrations/supabase/types';
+import { Json } from '@/integrations/supabase/types';
 
 // API Types
 export interface ApiEndpoint {
@@ -75,6 +76,45 @@ export interface ApiRequest {
   error?: string;
 }
 
+// Helper functions for type conversion
+function convertDbApiToApi(dbApi: Database['public']['Tables']['apis']['Row']): Api {
+  return {
+    ...dbApi,
+    endpoints: Array.isArray(dbApi.endpoints) 
+      ? dbApi.endpoints as unknown as ApiEndpoint[]
+      : typeof dbApi.endpoints === 'string'
+        ? JSON.parse(dbApi.endpoints)
+        : [] as ApiEndpoint[],
+    authentication: dbApi.authentication as unknown as ApiAuthentication,
+    default_headers: dbApi.default_headers as unknown as Record<string, string>,
+    visibility: dbApi.visibility as 'public' | 'private',
+  };
+}
+
+function convertApiToDbApi(api: Partial<Api>): Partial<Database['public']['Tables']['apis']['Update']> {
+  const result: Partial<Database['public']['Tables']['apis']['Update']> = {
+    ...api,
+    endpoints: api.endpoints as unknown as Json,
+    authentication: api.authentication as unknown as Json,
+    default_headers: api.default_headers as unknown as Json,
+  };
+  return result;
+}
+
+function convertDbSubscriptionToSubscription(dbSubscription: Database['public']['Tables']['subscriptions']['Row']): Subscription {
+  return {
+    ...dbSubscription,
+    status: dbSubscription.status as 'active' | 'suspended' | 'cancelled',
+  };
+}
+
+function convertDbPlanToSubscriptionPlan(dbPlan: Database['public']['Tables']['subscription_plans']['Row']): SubscriptionPlan {
+  return {
+    ...dbPlan,
+    features: dbPlan.features as unknown as any[],
+  };
+}
+
 // Type-safe API Service
 const apiService = {
   // API Management
@@ -90,7 +130,7 @@ const apiService = {
       const { data, error } = await query.select('*');
       
       if (error) throw error;
-      return data || [];
+      return (data || []).map(convertDbApiToApi);
     } catch (error: any) {
       console.error('Error fetching APIs:', error);
       toast('Error', { description: 'Failed to fetch APIs: ' + error.message, variant: 'destructive' });
@@ -107,7 +147,7 @@ const apiService = {
         .single();
       
       if (error) throw error;
-      return data;
+      return data ? convertDbApiToApi(data) : null;
     } catch (error: any) {
       console.error('Error fetching API by ID:', error);
       toast('Error', { description: 'Failed to fetch API details: ' + error.message, variant: 'destructive' });
@@ -122,15 +162,22 @@ const apiService = {
         api.endpoints = [];
       }
       
+      const userId = localStorage.getItem('userId') || '';
+      
+      const dbApi = convertApiToDbApi({
+        ...api,
+        provider_id: userId,
+      }) as Database['public']['Tables']['apis']['Insert'];
+      
       const { data, error } = await supabase
         .from('apis')
-        .insert(api)
+        .insert(dbApi)
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'API created successfully!' });
-      return data;
+      return data ? convertDbApiToApi(data) : null;
     } catch (error: any) {
       console.error('Error creating API:', error);
       toast('Error', { description: 'Failed to create API: ' + error.message, variant: 'destructive' });
@@ -140,16 +187,18 @@ const apiService = {
   
   updateApi: async (id: string, updates: Partial<Api>): Promise<Api | null> => {
     try {
+      const dbUpdates = convertApiToDbApi(updates);
+      
       const { data, error } = await supabase
         .from('apis')
-        .update(updates)
+        .update(dbUpdates)
         .eq('id', id)
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'API updated successfully!' });
-      return data;
+      return data ? convertDbApiToApi(data) : null;
     } catch (error: any) {
       console.error('Error updating API:', error);
       toast('Error', { description: 'Failed to update API: ' + error.message, variant: 'destructive' });
@@ -182,7 +231,7 @@ const apiService = {
         .select('*');
       
       if (error) throw error;
-      return data || [];
+      return (data || []).map(convertDbSubscriptionToSubscription);
     } catch (error: any) {
       console.error('Error fetching subscriptions:', error);
       toast('Error', { description: 'Failed to fetch subscriptions: ' + error.message, variant: 'destructive' });
@@ -199,7 +248,7 @@ const apiService = {
         .single();
       
       if (error) throw error;
-      return data;
+      return data ? convertDbSubscriptionToSubscription(data) : null;
     } catch (error: any) {
       console.error('Error fetching subscription by ID:', error);
       toast('Error', { description: 'Failed to fetch subscription details: ' + error.message, variant: 'destructive' });
@@ -215,7 +264,7 @@ const apiService = {
         .eq('api_id', apiId);
       
       if (error) throw error;
-      return data || [];
+      return (data || []).map(convertDbSubscriptionToSubscription);
     } catch (error: any) {
       console.error('Error fetching subscriptions for API:', error);
       toast('Error', { description: 'Failed to fetch subscriptions: ' + error.message, variant: 'destructive' });
@@ -231,7 +280,10 @@ const apiService = {
         .eq('user_id', userId);
       
       if (error) throw error;
-      return data || [];
+      return (data || []).map(item => ({
+        ...convertDbSubscriptionToSubscription(item),
+        api: item.apis ? convertDbApiToApi(item.apis as any) : undefined
+      })) as Subscription[];
     } catch (error: any) {
       console.error('Error fetching user subscriptions:', error);
       toast('Error', { description: 'Failed to fetch subscriptions: ' + error.message, variant: 'destructive' });
@@ -248,13 +300,13 @@ const apiService = {
       
       const { data, error } = await supabase
         .from('subscriptions')
-        .insert(subscription)
+        .insert(subscription as unknown as Database['public']['Tables']['subscriptions']['Insert'])
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'API subscription created successfully!' });
-      return data;
+      return data ? convertDbSubscriptionToSubscription(data) : null;
     } catch (error: any) {
       console.error('Error creating subscription:', error);
       toast('Error', { description: 'Failed to create subscription: ' + error.message, variant: 'destructive' });
@@ -266,14 +318,14 @@ const apiService = {
     try {
       const { data, error } = await supabase
         .from('subscriptions')
-        .update(updates)
+        .update(updates as unknown as Database['public']['Tables']['subscriptions']['Update'])
         .eq('id', id)
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'Subscription updated successfully!' });
-      return data;
+      return data ? convertDbSubscriptionToSubscription(data) : null;
     } catch (error: any) {
       console.error('Error updating subscription:', error);
       toast('Error', { description: 'Failed to update subscription: ' + error.message, variant: 'destructive' });
@@ -343,7 +395,7 @@ const apiService = {
         .eq('api_id', apiId);
       
       if (error) throw error;
-      return data || [];
+      return (data || []).map(convertDbPlanToSubscriptionPlan);
     } catch (error: any) {
       console.error('Error fetching subscription plans:', error);
       toast('Error', { description: 'Failed to fetch subscription plans: ' + error.message, variant: 'destructive' });
@@ -355,13 +407,13 @@ const apiService = {
     try {
       const { data, error } = await supabase
         .from('subscription_plans')
-        .insert(plan)
+        .insert(plan as unknown as Database['public']['Tables']['subscription_plans']['Insert'])
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'Subscription plan created successfully!' });
-      return data;
+      return data ? convertDbPlanToSubscriptionPlan(data) : null;
     } catch (error: any) {
       console.error('Error creating subscription plan:', error);
       toast('Error', { description: 'Failed to create subscription plan: ' + error.message, variant: 'destructive' });
@@ -373,14 +425,14 @@ const apiService = {
     try {
       const { data, error } = await supabase
         .from('subscription_plans')
-        .update(updates)
+        .update(updates as unknown as Database['public']['Tables']['subscription_plans']['Update'])
         .eq('id', id)
         .select()
         .single();
       
       if (error) throw error;
       toast('Success', { description: 'Subscription plan updated successfully!' });
-      return data;
+      return data ? convertDbPlanToSubscriptionPlan(data) : null;
     } catch (error: any) {
       console.error('Error updating subscription plan:', error);
       toast('Error', { description: 'Failed to update subscription plan: ' + error.message, variant: 'destructive' });
