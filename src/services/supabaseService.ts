@@ -84,7 +84,7 @@ function convertDbApiToApi(dbApi: Database['public']['Tables']['apis']['Row']): 
       ? dbApi.endpoints as unknown as ApiEndpoint[]
       : typeof dbApi.endpoints === 'string'
         ? JSON.parse(dbApi.endpoints)
-        : [] as ApiEndpoint[],
+        : (dbApi.endpoints as unknown as ApiEndpoint[]) || [],
     authentication: dbApi.authentication as unknown as ApiAuthentication,
     default_headers: dbApi.default_headers as unknown as Record<string, string>,
     visibility: dbApi.visibility as 'public' | 'private',
@@ -167,11 +167,11 @@ const apiService = {
       const dbApi = convertApiToDbApi({
         ...api,
         provider_id: userId,
-      }) as Database['public']['Tables']['apis']['Insert'];
+      });
       
       const { data, error } = await supabase
         .from('apis')
-        .insert(dbApi)
+        .insert(dbApi as Database['public']['Tables']['apis']['Insert'])
         .select()
         .single();
       
@@ -191,7 +191,7 @@ const apiService = {
       
       const { data, error } = await supabase
         .from('apis')
-        .update(dbUpdates)
+        .update(dbUpdates as Database['public']['Tables']['apis']['Update'])
         .eq('id', id)
         .select()
         .single();
@@ -405,9 +405,14 @@ const apiService = {
   
   createSubscriptionPlan: async (plan: Omit<SubscriptionPlan, 'id'>): Promise<SubscriptionPlan | null> => {
     try {
+      const dbPlan = {
+        ...plan,
+        features: plan.features as unknown as Json,
+      };
+      
       const { data, error } = await supabase
         .from('subscription_plans')
-        .insert(plan as unknown as Database['public']['Tables']['subscription_plans']['Insert'])
+        .insert(dbPlan as Database['public']['Tables']['subscription_plans']['Insert'])
         .select()
         .single();
       
@@ -423,9 +428,14 @@ const apiService = {
   
   updateSubscriptionPlan: async (id: string, updates: Partial<SubscriptionPlan>): Promise<SubscriptionPlan | null> => {
     try {
+      const dbUpdates = {
+        ...updates,
+        features: updates.features as unknown as Json,
+      };
+      
       const { data, error } = await supabase
         .from('subscription_plans')
-        .update(updates as unknown as Database['public']['Tables']['subscription_plans']['Update'])
+        .update(dbUpdates as Database['public']['Tables']['subscription_plans']['Update'])
         .eq('id', id)
         .select()
         .single();
