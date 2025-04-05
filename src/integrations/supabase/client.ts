@@ -45,7 +45,7 @@ export const logApiRequest = async ({
   requestBody?: any;
   responseHeaders?: any;
   responseBody?: any;
-  error?: string;
+  error?: string | null;
 }) => {
   try {
     const { data, error: dbError } = await supabase.rpc('log_api_request', {

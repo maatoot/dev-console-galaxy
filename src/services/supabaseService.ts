@@ -1,6 +1,7 @@
 
 import { supabase, logApiRequest } from '@/integrations/supabase/client';
 import { toast } from '@/lib/toast';
+import { Database } from '@/integrations/supabase/types';
 
 // API Types
 export interface ApiEndpoint {
@@ -74,19 +75,19 @@ export interface ApiRequest {
   error?: string;
 }
 
-// API Service
+// Type-safe API Service
 const apiService = {
   // API Management
   getApis: async ({ isProvider = false }: { isProvider?: boolean } = {}): Promise<Api[]> => {
     try {
-      let query = supabase.from('apis').select('*');
+      let query = supabase.from('apis');
       
       // If fetching as a provider, don't filter by visibility
       if (!isProvider) {
         query = query.eq('visibility', 'public');
       }
       
-      const { data, error } = await query;
+      const { data, error } = await query.select('*');
       
       if (error) throw error;
       return data || [];

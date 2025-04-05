@@ -1,4 +1,3 @@
-
 import axios from 'axios';
 import apiService from './supabaseService';
 import { supabase, logApiRequest } from '@/integrations/supabase/client';
@@ -243,17 +242,14 @@ const apis = {
   
   addEndpoint: async (apiId: string, endpoint: { path: string; description: string }) => {
     try {
-      // Get the current API
       const { data } = await apis.get(apiId);
       
       if (!data) {
         throw new Error('API not found');
       }
       
-      // Add the new endpoint
       const updatedEndpoints = [...(data.endpoints || []), endpoint];
       
-      // Update the API
       return apis.update(apiId, { endpoints: updatedEndpoints });
     } catch (error) {
       console.log('Falling back to local endpoint addition');
@@ -430,20 +426,16 @@ const gateway = {
     headers: any;
   }> => {
     try {
-      // Start measuring response time
       const startTime = Date.now();
       
-      // Extract the base URL and path from the provided URL
       let targetUrl = url;
       
-      // Create request headers, including the API key if provided
       const headers = {
         'Content-Type': 'application/json',
         ...(apiKey && { 'X-API-Key': apiKey }),
         ...options.headers
       };
       
-      // Make a direct request to the specified URL using Axios
       let response;
       
       console.log(`Making ${options.method} request to: ${targetUrl}`, {
@@ -471,21 +463,18 @@ const gateway = {
           throw new Error(`Unsupported method: ${options.method}`);
       }
       
-      // Calculate response time
       const responseTime = Date.now() - startTime;
       
-      // Find subscription ID for logging (if using Supabase)
       try {
-        const { data: subscriptions } = await supabase
+        const { data: subscriptionsData } = await supabase
           .from('subscriptions')
           .select('id')
           .eq('api_key', apiKey)
           .limit(1);
           
-        if (subscriptions && subscriptions.length > 0) {
-          // Log the request to Supabase
+        if (subscriptionsData && subscriptionsData.length > 0) {
           await logApiRequest({
-            subscriptionId: subscriptions[0].id,
+            subscriptionId: subscriptionsData[0].id,
             endpointPath: new URL(targetUrl).pathname,
             statusCode: response.status,
             responseTime,
@@ -510,7 +499,6 @@ const gateway = {
     } catch (error: any) {
       console.error('API gateway error:', error);
       
-      // Try to provide as much information as possible from the error
       if (axios.isAxiosError(error)) {
         return {
           data: error.response?.data || { error: error.message },
@@ -520,7 +508,6 @@ const gateway = {
         };
       }
       
-      // Fallback for non-Axios errors
       return {
         data: { error: error.message || 'Unknown error' },
         status: 500,

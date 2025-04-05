@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { toast } from '@/lib/toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -308,7 +307,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider value={{ 
       user, 
       session,
-      token: session?.access_token || null,
       isLoading, 
       isAuthenticated: !!user,
       userRole: user?.role || null,
