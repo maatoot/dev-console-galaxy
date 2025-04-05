@@ -48,22 +48,26 @@ export const logApiRequest = async ({
   error?: string | null;
 }) => {
   try {
-    const { data, error: dbError } = await supabase.rpc('log_api_request', {
-      p_subscription_id: subscriptionId,
-      p_endpoint_path: endpointPath,
-      p_status_code: statusCode,
-      p_response_time: responseTime,
-      p_request_method: requestMethod,
-      p_request_headers: requestHeaders,
-      p_request_query: requestQuery,
-      p_request_body: requestBody,
-      p_response_headers: responseHeaders,
-      p_response_body: responseBody,
-      p_error: error
-    });
+    const { data, error: dbError } = await supabase
+      .from('api_requests')
+      .insert({
+        subscription_id: subscriptionId,
+        endpoint_path: endpointPath,
+        status_code: statusCode,
+        response_time: responseTime,
+        request_method: requestMethod,
+        request_headers: requestHeaders,
+        request_query: requestQuery,
+        request_body: requestBody,
+        response_headers: responseHeaders,
+        response_body: responseBody,
+        error: error
+      })
+      .select('id')
+      .single();
 
     if (dbError) console.error('Failed to log API request:', dbError);
-    return data;
+    return data?.id;
   } catch (error) {
     console.error('Error in logApiRequest:', error);
     return null;

@@ -13,6 +13,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from '@/lib/toast';
 import apiService from '@/services/apiClient';
 import { Copy, CheckCircle, PlusCircle, ExternalLink, Edit, Trash, FileTerminal, BarChart, Eye, EyeOff } from 'lucide-react';
+import ApiTester from '@/components/ApiTester';
+import ApiRequestLogs from '@/components/ApiRequestLogs';
+import ApiAnalytics from '@/components/ApiAnalytics';
 
 interface API {
   id: string;
@@ -188,7 +191,7 @@ const ApiDetailsPage = () => {
           )}
           {subscription && (
             <Button asChild variant="outline">
-              <Link to={`/tester?apiKey=${subscription.api_key}`}>
+              <Link to="#tester" onClick={() => setActiveTab('tester')}>
                 <FileTerminal className="mr-2 h-4 w-4" />
                 Test API
               </Link>
@@ -201,9 +204,11 @@ const ApiDetailsPage = () => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
+          {subscription && <TabsTrigger value="tester">API Tester</TabsTrigger>}
           {subscription && <TabsTrigger value="subscription">My Subscription</TabsTrigger>}
           {isOwner && <TabsTrigger value="management">Management</TabsTrigger>}
           {isOwner && <TabsTrigger value="analytics">Analytics</TabsTrigger>}
+          {isOwner && <TabsTrigger value="logs">Request Logs</TabsTrigger>}
         </TabsList>
         
         <TabsContent value="overview" className="space-y-6">
@@ -365,11 +370,11 @@ const ApiDetailsPage = () => {
                           <Button 
                             variant="outline" 
                             size="sm"
-                            asChild
+                            onClick={() => {
+                              setActiveTab('tester');
+                            }}
                           >
-                            <Link to={`/tester?apiKey=${subscription.api_key}&path=${endpoint.path.replace(/^\//, '')}`}>
-                              Test
-                            </Link>
+                            Test
                           </Button>
                         )}
                       </div>
@@ -384,6 +389,21 @@ const ApiDetailsPage = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {subscription && (
+          <TabsContent value="tester" className="space-y-6">
+            <ApiTester 
+              apiKey={subscription.api_key}
+              baseUrl={api.baseUrl}
+              endpoints={api.endpoints || []}
+              authType={api.authentication?.type}
+              apiKeyName={api.authentication?.apiKeyName}
+              apiKeyLocation={api.authentication?.apiKeyLocation}
+              defaultHeaders={api.defaultHeaders as Record<string, string>}
+              subscriptionId={subscription.id}
+            />
+          </TabsContent>
+        )}
         
         {subscription && (
           <TabsContent value="subscription" className="space-y-6">
@@ -424,10 +444,8 @@ const ApiDetailsPage = () => {
                   </div>
                   
                   <div className="pt-2 flex gap-2">
-                    <Button asChild variant="outline" size="sm" className="flex-1">
-                      <Link to={`/tester?apiKey=${subscription.api_key}`}>
-                        Test API
-                      </Link>
+                    <Button onClick={() => setActiveTab('tester')} variant="outline" size="sm" className="flex-1">
+                      Test API
                     </Button>
                   </div>
                 </div>
@@ -546,23 +564,13 @@ const ApiDetailsPage = () => {
         
         {isOwner && (
           <TabsContent value="analytics" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>API Analytics</CardTitle>
-                <CardDescription>
-                  Statistics about your API usage
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="h-96 flex items-center justify-center">
-                <div className="text-center">
-                  <BarChart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium">Analytics Coming Soon</h3>
-                  <p className="text-muted-foreground mt-2">
-                    Detailed analytics for your API will be available soon.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <ApiAnalytics apiId={apiId!} />
+          </TabsContent>
+        )}
+
+        {isOwner && (
+          <TabsContent value="logs" className="space-y-6">
+            <ApiRequestLogs apiId={apiId!} limit={50} />
           </TabsContent>
         )}
       </Tabs>
