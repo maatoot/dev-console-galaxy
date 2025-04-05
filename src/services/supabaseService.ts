@@ -120,14 +120,14 @@ const apiService = {
   // API Management
   getApis: async ({ isProvider = false }: { isProvider?: boolean } = {}): Promise<Api[]> => {
     try {
-      let query = supabase.from('apis');
+      let query = supabase.from('apis').select('*');
       
       // If fetching as a provider, don't filter by visibility
       if (!isProvider) {
         query = query.eq('visibility', 'public');
       }
       
-      const { data, error } = await query.select('*');
+      const { data, error } = await query;
       
       if (error) throw error;
       return (data || []).map(convertDbApiToApi);
